@@ -15,7 +15,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app,growfund-u80oj9e1.b4a.run,node360a.containers.back4app.com').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app,growfund-u80oj9e1.b4a.run,growfund-6pu3fil9.b4a.run,node360a.containers.back4app.com').split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -158,6 +158,29 @@ CORS_ALLOWED_ORIGINS = [
     'https://e1e1-105-160-17-43.ngrok-free.app',  # Ngrok frontend URL
 ]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# CSRF Trusted Origins
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'https://e1e1-105-160-17-43.ngrok-free.app',
+    'http://growfund-u80oj9e1.b4a.run',
+    'https://growfund-u80oj9e1.b4a.run',
+    'http://growfund-6pu3fil9.b4a.run',
+    'https://growfund-6pu3fil9.b4a.run',
+]
 
 # Email Settings
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
