@@ -15,7 +15,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app,growfund-u80oj9e1.b4a.run,*.b4a.run').split(',')
 
 # Application definition
 INSTALLED_APPS = [
