@@ -159,6 +159,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3001',
     'http://127.0.0.1:3000',
     'https://e1e1-105-160-17-43.ngrok-free.app',  # Ngrok frontend URL
+    'https://5cb0-105-160-0-247.ngrok-free.app',  # New ngrok URL
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -191,6 +192,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://growfund-u80oj9e1.b4a.run',
     'http://growfund-6pu3fil9.b4a.run',
     'https://growfund-6pu3fil9.b4a.run',
+    'https://5cb0-105-160-0-247.ngrok-free.app',
 ]
 
 # Email Settings
