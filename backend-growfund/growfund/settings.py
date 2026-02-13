@@ -51,6 +51,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Disable automatic slash appending to prevent redirects during CORS preflight
+APPEND_SLASH = False
+
 ROOT_URLCONF = 'growfund.urls'
 
 TEMPLATES = [
@@ -168,6 +171,14 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
 # CSRF Trusted Origins
