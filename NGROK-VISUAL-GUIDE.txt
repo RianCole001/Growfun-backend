@@ -1,0 +1,204 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    NGROK SETUP - VISUAL GUIDE                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: INSTALL NGROK                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Windows:  choco install ngrok                                              │
+│  Mac:      brew install ngrok                                               │
+│  Linux:    snap install ngrok                                               │
+│                                                                              │
+│  Verify:   ngrok version                                                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: GET AUTH TOKEN                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. Go to https://ngrok.com                                                 │
+│  2. Sign up (free)                                                          │
+│  3. Copy auth token from dashboard                                          │
+│  4. Run: ngrok config add-authtoken YOUR_TOKEN                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 3: START SERVICES                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  TERMINAL 1 - Backend:                                                      │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ $ cd backend-growfund                                                │   │
+│  │ $ python manage.py runserver 0.0.0.0:8000                            │   │
+│  │ Starting development server at http://127.0.0.1:8000/                │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  TERMINAL 2 - Frontend:                                                     │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ $ cd Growfund-Dashboard/trading-dashboard                            │   │
+│  │ $ npm start                                                          │   │
+│  │ Compiled successfully!                                               │   │
+│  │ On Your Network: http://localhost:3000                               │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 4: CREATE NGROK TUNNELS                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  TERMINAL 3 - Backend Tunnel:                                               │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ $ ngrok http 8000                                                    │   │
+│  │                                                                      │   │
+│  │ Session Status                online                                 │   │
+│  │ Account                       your-email@example.com                 │   │
+│  │ Version                       3.x.x                                  │   │
+│  │ Region                        us (United States)                     │   │
+│  │ Forwarding    https://xxxx-xxxx-xxxx.ngrok.io -> http://localhost:8000 │   │
+│  │                                                                      │   │
+│  │ ✓ COPY THIS URL: https://xxxx-xxxx-xxxx.ngrok.io                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  TERMINAL 4 - Frontend Tunnel:                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ $ ngrok http 3000                                                    │   │
+│  │                                                                      │   │
+│  │ Session Status                online                                 │   │
+│  │ Account                       your-email@example.com                 │   │
+│  │ Version                       3.x.x                                  │   │
+│  │ Region                        us (United States)                     │   │
+│  │ Forwarding    https://yyyy-yyyy-yyyy.ngrok.io -> http://localhost:3000 │   │
+│  │                                                                      │   │
+│  │ ✓ COPY THIS URL: https://yyyy-yyyy-yyyy.ngrok.io                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 5: UPDATE CONFIGURATION                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  File: backend-growfund/growfund/settings.py                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ ALLOWED_HOSTS = [                                                    │   │
+│  │     'localhost',                                                     │   │
+│  │     'xxxx-xxxx-xxxx.ngrok.io',  # Add your backend ngrok URL        │   │
+│  │ ]                                                                    │   │
+│  │                                                                      │   │
+│  │ CORS_ALLOWED_ORIGINS = [                                             │   │
+│  │     'http://localhost:3000',                                         │   │
+│  │     'https://yyyy-yyyy-yyyy.ngrok.io',  # Add your frontend URL     │   │
+│  │ ]                                                                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  File: Growfund-Dashboard/trading-dashboard/.env                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ REACT_APP_API_URL=https://xxxx-xxxx-xxxx.ngrok.io                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  Restart Django:                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │ Ctrl+C (stop Django)                                                 │   │
+│  │ python manage.py runserver 0.0.0.0:8000 (restart)                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 6: SHARE WITH OTHERS                                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Send these URLs to your team:                                              │
+│                                                                              │
+│  Frontend:  https://yyyy-yyyy-yyyy.ngrok.io                                 │
+│  Backend:   https://xxxx-xxxx-xxxx.ngrok.io                                 │
+│                                                                              │
+│  They can now:                                                              │
+│  ✓ Open frontend in browser                                                 │
+│  ✓ Test all features                                                        │
+│  ✓ Make API calls                                                           │
+│  ✓ No installation needed                                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 7: MONITOR TRAFFIC                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Open in browser: http://localhost:4040                                     │
+│                                                                              │
+│  You can see:                                                               │
+│  ✓ All HTTP requests                                                        │
+│  ✓ Request/response details                                                 │
+│  ✓ Headers and body                                                         │
+│  ✓ Performance metrics                                                      │
+│  ✓ Replay requests                                                          │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         ARCHITECTURE DIAGRAM                                   ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+YOUR COMPUTER
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  ┌──────────────────┐         ┌──────────────────┐                          │
+│  │  Django Backend  │         │  React Frontend  │                          │
+│  │  Port 8000       │         │  Port 3000       │                          │
+│  └────────┬─────────┘         └────────┬─────────┘                          │
+│           │                            │                                    │
+│           │ ngrok http 8000            │ ngrok http 3000                    │
+│           │                            │                                    │
+│  ┌────────▼──────────────────────────────▼──────────┐                       │
+│  │         NGROK TUNNELS                            │                       │
+│  │  ┌──────────────────────────────────────────┐    │                       │
+│  │  │ https://xxxx-xxxx.ngrok.io (Backend)     │    │                       │
+│  │  │ https://yyyy-yyyy.ngrok.io (Frontend)    │    │                       │
+│  │  └──────────────────────────────────────────┘    │                       │
+│  └────────┬──────────────────────────────────────────┘                       │
+│           │                                                                  │
+│           │ INTERNET                                                         │
+│           │                                                                  │
+└───────────┼──────────────────────────────────────────────────────────────────┘
+            │
+            │
+OTHERS' COMPUTERS
+┌───────────┼──────────────────────────────────────────────────────────────────┐
+│           │                                                                  │
+│  ┌────────▼──────────────────────────────────────────┐                       │
+│  │  Browser                                          │                       │
+│  │  https://yyyy-yyyy.ngrok.io                       │                       │
+│  │  (Frontend loads)                                 │                       │
+│  │  (API calls to https://xxxx-xxxx.ngrok.io)        │                       │
+│  └───────────────────────────────────────────────────┘                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         QUICK REFERENCE                                        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+COMMAND                          DESCRIPTION
+─────────────────────────────────────────────────────────────────────────────────
+ngrok http 8000                  Share port 8000 (backend)
+ngrok http 3000                  Share port 3000 (frontend)
+ngrok config add-authtoken TOKEN Configure auth token
+ngrok config check               Verify configuration
+ngrok version                    Check ngrok version
+http://localhost:4040            Monitor traffic
+Ctrl+C                           Stop ngrok tunnel
+
+COMMON ISSUES
+─────────────────────────────────────────────────────────────────────────────────
+"ngrok: command not found"       → Reinstall ngrok
+"Invalid auth token"             → Get new token from ngrok.com
+"Address already in use"         → Kill process on port or use different port
+CORS errors                      → Update CORS_ALLOWED_ORIGINS in settings.py
+"Connection refused"             → Check backend is running
+
+✅ YOU'RE READY TO SHARE YOUR PROJECT!

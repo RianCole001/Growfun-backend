@@ -1,0 +1,77 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    NGROK LOGIN FIX - QUICK ACTION STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM: Login/Register not working on ngrok URL
+
+ROOT CAUSE: Frontend trying to call localhost:8000 from internet (ngrok URL)
+            This violates CORS policy
+
+═══════════════════════════════════════════════════════════════════════════════
+                              IMMEDIATE FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: Get Backend Ngrok URL
+────────────────────────────────────────────────────────────────────────────────
+Open a NEW terminal and run:
+    ngrok http 8000
+
+Copy the URL shown (e.g., https://1234-56-78-90.ngrok-free.app)
+
+
+STEP 2: Update Frontend .env
+────────────────────────────────────────────────────────────────────────────────
+File: Growfund-Dashboard/trading-dashboard/.env
+
+Change:
+    REACT_APP_API_URL=https://e1e1-105-160-17-43.ngrok-free.app
+
+To:
+    REACT_APP_API_URL=https://1234-56-78-90.ngrok-free.app/api
+
+(Replace 1234-56-78-90 with YOUR backend ngrok URL from Step 1)
+
+
+STEP 3: Update Backend settings.py
+────────────────────────────────────────────────────────────────────────────────
+File: backend-growfund/growfund/settings.py
+
+Find this line (around line 18):
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app').split(',')
+
+Change to:
+    ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app,1234-56-78-90.ngrok-free.app').split(',')
+
+(Replace 1234-56-78-90 with YOUR backend ngrok URL from Step 1)
+
+
+STEP 4: Restart Services
+────────────────────────────────────────────────────────────────────────────────
+1. Stop frontend (Ctrl+C in Terminal 1)
+2. Stop backend (Ctrl+C in Terminal 2)
+3. Restart backend:
+   cd backend-growfund
+   python manage.py runserver
+
+4. Restart frontend:
+   cd Growfund-Dashboard/trading-dashboard
+   npm start
+
+
+STEP 5: Test
+────────────────────────────────────────────────────────────────────────────────
+1. Open: https://e1e1-105-160-17-43.ngrok-free.app
+2. Try to login/register
+3. Should work now!
+
+═══════════════════════════════════════════════════════════════════════════════
+                              KEY POINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Frontend URL: https://e1e1-105-160-17-43.ngrok-free.app (for browser)
+✓ Backend URL: https://1234-56-78-90.ngrok-free.app (for API calls)
+✓ API endpoint: https://1234-56-78-90.ngrok-free.app/api (in .env)
+✓ Both URLs must be in ALLOWED_HOSTS
+✓ Ngrok URLs change when you restart - update .env and settings.py each time
+
+═══════════════════════════════════════════════════════════════════════════════
