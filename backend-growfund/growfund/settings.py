@@ -15,7 +15,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,e1e1-105-160-17-43.ngrok-free.app,growfund-u80oj9e1.b4a.run,growfund-6pu3fil9.b4a.run,growfund-g5r8eu3x.b4a.run,node360a.containers.back4app.com').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',') if config('ALLOWED_HOSTS', default='') else ['*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -160,6 +160,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
     'https://e1e1-105-160-17-43.ngrok-free.app',  # Ngrok frontend URL
     'https://5cb0-105-160-0-247.ngrok-free.app',  # New ngrok URL
+    'https://de0b-105-160-0-247.ngrok-free.app',  # Latest ngrok URL
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -195,6 +196,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://growfund-g5r8eu3x.b4a.run',
     'https://growfund-g5r8eu3x.b4a.run',
     'https://5cb0-105-160-0-247.ngrok-free.app',
+    'https://de0b-105-160-0-247.ngrok-free.app',
 ]
 
 # Email Settings
