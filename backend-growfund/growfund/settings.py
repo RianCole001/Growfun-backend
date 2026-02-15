@@ -55,8 +55,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# Disable automatic slash appending to prevent redirects during CORS preflight
-APPEND_SLASH = False
+# Enable automatic slash appending for better URL handling
+APPEND_SLASH = True
 
 ROOT_URLCONF = 'growfund.urls'
 
@@ -155,15 +155,20 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
-# CORS Settings
+# CORS Settings - Allow frontend to connect
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
     'https://e1e1-105-160-17-43.ngrok-free.app',  # Ngrok frontend URL
     'https://5cb0-105-160-0-247.ngrok-free.app',  # New ngrok URL
     'https://de0b-105-160-0-247.ngrok-free.app',  # Latest ngrok URL
 ]
+
+# Alternative: Allow all origins in development (comment out CORS_ALLOWED_ORIGINS above and uncomment below)
+# CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
@@ -190,6 +195,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
     'https://e1e1-105-160-17-43.ngrok-free.app',
     'http://growfund-u80oj9e1.b4a.run',
     'https://growfund-u80oj9e1.b4a.run',
@@ -199,6 +205,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://growfund-g5r8eu3x.b4a.run',
     'https://5cb0-105-160-0-247.ngrok-free.app',
     'https://de0b-105-160-0-247.ngrok-free.app',
+    'https://growfun-backend.onrender.com',
 ]
 
 # Email Settings
