@@ -17,6 +17,10 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',') if config('ALLOWED_HOSTS', default='') else ['*']
 
+# Add Render deployment domain
+if 'growfun-backend.onrender.com' not in ALLOWED_HOSTS and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('growfun-backend.onrender.com')
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -75,15 +79,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'growfund.wsgi.application'
 
 # Database
+import dj_database_url
+
 DATABASES = {
-    'default': {
-        'ENGINE': config('DB_ENGINE', default='django.db.backends.sqlite3'),
-        'NAME': config('DB_NAME', default=BASE_DIR / 'db.sqlite3'),
-        'USER': config('DB_USER', default=''),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default=''),
-        'PORT': config('DB_PORT', default=''),
-    }
+    'default': dj_database_url.config(
+        default=config('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600
+    )
 }
 
 # Custom User Model
