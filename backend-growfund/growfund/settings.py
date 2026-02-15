@@ -156,18 +156,14 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings - Allow frontend to connect
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-    'https://e1e1-105-160-17-43.ngrok-free.app',  # Ngrok frontend URL
-    'https://5cb0-105-160-0-247.ngrok-free.app',  # New ngrok URL
-    'https://de0b-105-160-0-247.ngrok-free.app',  # Latest ngrok URL
-]
-
-# Alternative: Allow all origins in development (comment out CORS_ALLOWED_ORIGINS above and uncomment below)
-# CORS_ALLOW_ALL_ORIGINS = True
+if DEBUG:
+    # Development: Allow all origins (works with ngrok, localhost, etc.)
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    # Production: Restrict to specific origins
+    CORS_ALLOWED_ORIGINS = [
+        'https://your-production-frontend.com',  # Update with your production URL
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -196,17 +192,16 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3001',
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
-    'https://e1e1-105-160-17-43.ngrok-free.app',
-    'http://growfund-u80oj9e1.b4a.run',
-    'https://growfund-u80oj9e1.b4a.run',
-    'http://growfund-6pu3fil9.b4a.run',
-    'https://growfund-6pu3fil9.b4a.run',
-    'http://growfund-g5r8eu3x.b4a.run',
-    'https://growfund-g5r8eu3x.b4a.run',
-    'https://5cb0-105-160-0-247.ngrok-free.app',
-    'https://de0b-105-160-0-247.ngrok-free.app',
     'https://growfun-backend.onrender.com',
 ]
+
+# Add ngrok URLs dynamically if in DEBUG mode
+if DEBUG:
+    # Allow any ngrok URL in development
+    import re
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https://[a-z0-9-]+\.ngrok-free\.app$",
+    ]
 
 # Email Settings
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
