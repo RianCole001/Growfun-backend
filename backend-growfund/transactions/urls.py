@@ -21,5 +21,19 @@ urlpatterns = [
     path('korapay/webhook/', korapay_views.korapay_webhook, name='korapay-webhook'),
     path('korapay/banks/', korapay_views.korapay_get_banks, name='korapay-banks'),
     path('korapay/resolve-account/', korapay_views.korapay_resolve_account, name='korapay-resolve-account'),
+    
+    # Admin endpoints - Deposits
+    path('admin/deposits/', views.admin_deposits_list, name='admin-deposits-list'),
+    path('admin/deposits/<int:transaction_id>/approve/', views.admin_approve_deposit, name='admin-approve-deposit'),
+    path('admin/deposits/<int:transaction_id>/reject/', views.admin_reject_deposit, name='admin-reject-deposit'),
+    
+    # Admin endpoints - Withdrawals
+    path('admin/withdrawals/', views.admin_withdrawals_list, name='admin-withdrawals-list'),
+    path('admin/withdrawals/<int:transaction_id>/process/', views.admin_process_withdrawal, name='admin-process-withdrawal'),
+    path('admin/withdrawals/<int:transaction_id>/complete/', views.admin_complete_withdrawal, name='admin-complete-withdrawal'),
+    path('admin/withdrawals/<int:transaction_id>/reject/', views.admin_reject_withdrawal, name='admin-reject-withdrawal'),
+    
+    # Admin endpoints - Stats
+    path('admin/stats/', views.admin_transaction_stats, name='admin-transaction-stats'),
 ]
 

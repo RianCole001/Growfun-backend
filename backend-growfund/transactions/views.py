@@ -298,3 +298,371 @@ def momo_callback(request):
     
     except MoMoPayment.DoesNotExist:
         return Response({'success': False}, status=status.HTTP_404_NOT_FOUND)
+
+
+
+# ============================================
+# ADMIN ENDPOINTS - Deposit & Withdrawal Approval
+# ============================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_deposits_list(request):
+    """
+    Get all deposits for admin approval (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    # Get query parameters
+    status_filter = request.query_params.get('status', None)
+    search = request.query_params.get('search', None)
+    
+    # Base queryset - all deposits
+    deposits = Transaction.objects.filter(transaction_type='deposit').select_related('user')
+    
+    # Apply filters
+    if status_filter:
+        deposits = deposits.filter(status=status_filter)
+    
+    if search:
+        deposits = deposits.filter(
+            user__email__icontains=search
+        ) | deposits.filter(
+            reference__icontains=search
+        )
+    
+    # Order by newest first
+    deposits = deposits.order_by('-created_at')
+    
+    # Serialize
+    serializer = TransactionSerializer(deposits, many=True)
+    
+    # Calculate stats
+    stats = {
+        'total': deposits.count(),
+        'pending': deposits.filter(status='pending').count(),
+        'processing': deposits.filter(status='processing').count(),
+        'completed': deposits.filter(status='completed').count(),
+        'failed': deposits.filter(status='failed').count(),
+        'total_amount': sum(float(d.amount) for d in deposits),
+        'pending_amount': sum(float(d.amount) for d in deposits.filter(status='pending')),
+    }
+    
+    return Response({
+        'success': True,
+        'deposits': serializer.data,
+        'stats': stats
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_approve_deposit(request, transaction_id):
+    """
+    Approve a deposit (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        transaction = Transaction.objects.get(id=transaction_id, transaction_type='deposit')
+        
+        if transaction.status == 'completed':
+            return Response({
+                'success': False,
+                'message': 'Deposit already approved'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Approve deposit
+        transaction.status = 'completed'
+        transaction.completed_at = timezone.now()
+        transaction.save()
+        
+        # Credit user balance
+        transaction.user.balance += transaction.amount
+        transaction.user.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Deposit of {transaction.amount} approved for {transaction.user.email}',
+            'transaction': TransactionSerializer(transaction).data
+        }, status=status.HTTP_200_OK)
+    
+    except Transaction.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Deposit not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_reject_deposit(request, transaction_id):
+    """
+    Reject a deposit (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    reason = request.data.get('reason', 'Rejected by admin')
+    
+    try:
+        transaction = Transaction.objects.get(id=transaction_id, transaction_type='deposit')
+        
+        if transaction.status == 'completed':
+            return Response({
+                'success': False,
+                'message': 'Cannot reject completed deposit'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Reject deposit
+        transaction.status = 'failed'
+        transaction.description = f"{transaction.description} - Rejected: {reason}"
+        transaction.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Deposit rejected for {transaction.user.email}',
+            'transaction': TransactionSerializer(transaction).data
+        }, status=status.HTTP_200_OK)
+    
+    except Transaction.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Deposit not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_withdrawals_list(request):
+    """
+    Get all withdrawals for admin approval (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    # Get query parameters
+    status_filter = request.query_params.get('status', None)
+    search = request.query_params.get('search', None)
+    
+    # Base queryset - all withdrawals
+    withdrawals = Transaction.objects.filter(transaction_type='withdrawal').select_related('user')
+    
+    # Apply filters
+    if status_filter:
+        withdrawals = withdrawals.filter(status=status_filter)
+    
+    if search:
+        withdrawals = withdrawals.filter(
+            user__email__icontains=search
+        ) | withdrawals.filter(
+            reference__icontains=search
+        )
+    
+    # Order by newest first
+    withdrawals = withdrawals.order_by('-created_at')
+    
+    # Serialize
+    serializer = TransactionSerializer(withdrawals, many=True)
+    
+    # Calculate stats
+    stats = {
+        'total': withdrawals.count(),
+        'pending': withdrawals.filter(status='pending').count(),
+        'processing': withdrawals.filter(status='processing').count(),
+        'completed': withdrawals.filter(status='completed').count(),
+        'failed': withdrawals.filter(status='failed').count(),
+        'total_amount': sum(float(w.amount) for w in withdrawals),
+        'pending_amount': sum(float(w.amount) for w in withdrawals.filter(status='pending')),
+    }
+    
+    return Response({
+        'success': True,
+        'withdrawals': serializer.data,
+        'stats': stats
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_process_withdrawal(request, transaction_id):
+    """
+    Mark withdrawal as processing (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        transaction = Transaction.objects.get(id=transaction_id, transaction_type='withdrawal')
+        
+        if transaction.status != 'pending':
+            return Response({
+                'success': False,
+                'message': f'Cannot process withdrawal with status: {transaction.status}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mark as processing
+        transaction.status = 'processing'
+        transaction.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Withdrawal marked as processing for {transaction.user.email}',
+            'transaction': TransactionSerializer(transaction).data
+        }, status=status.HTTP_200_OK)
+    
+    except Transaction.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Withdrawal not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_complete_withdrawal(request, transaction_id):
+    """
+    Complete a withdrawal (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        transaction = Transaction.objects.get(id=transaction_id, transaction_type='withdrawal')
+        
+        if transaction.status == 'completed':
+            return Response({
+                'success': False,
+                'message': 'Withdrawal already completed'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Complete withdrawal
+        transaction.status = 'completed'
+        transaction.completed_at = timezone.now()
+        transaction.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Withdrawal of {transaction.amount} completed for {transaction.user.email}',
+            'transaction': TransactionSerializer(transaction).data
+        }, status=status.HTTP_200_OK)
+    
+    except Transaction.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Withdrawal not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_reject_withdrawal(request, transaction_id):
+    """
+    Reject a withdrawal and refund user (admin only)
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    reason = request.data.get('reason', 'Rejected by admin')
+    
+    try:
+        transaction = Transaction.objects.get(id=transaction_id, transaction_type='withdrawal')
+        
+        if transaction.status == 'completed':
+            return Response({
+                'success': False,
+                'message': 'Cannot reject completed withdrawal'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Reject withdrawal
+        transaction.status = 'failed'
+        transaction.description = f"{transaction.description} - Rejected: {reason}"
+        transaction.save()
+        
+        # Refund user balance
+        transaction.user.balance += transaction.amount
+        transaction.user.save()
+        
+        return Response({
+            'success': True,
+            'message': f'Withdrawal rejected and refunded for {transaction.user.email}',
+            'transaction': TransactionSerializer(transaction).data
+        }, status=status.HTTP_200_OK)
+    
+    except Transaction.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Withdrawal not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_transaction_stats(request):
+    """
+    Get transaction statistics for admin dashboard
+    """
+    # Check if user is admin
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    from django.db.models import Sum, Count
+    
+    # Deposit stats
+    deposits = Transaction.objects.filter(transaction_type='deposit')
+    deposit_stats = {
+        'total_count': deposits.count(),
+        'pending_count': deposits.filter(status='pending').count(),
+        'completed_count': deposits.filter(status='completed').count(),
+        'total_amount': float(deposits.aggregate(Sum('amount'))['amount__sum'] or 0),
+        'pending_amount': float(deposits.filter(status='pending').aggregate(Sum('amount'))['amount__sum'] or 0),
+        'completed_amount': float(deposits.filter(status='completed').aggregate(Sum('amount'))['amount__sum'] or 0),
+    }
+    
+    # Withdrawal stats
+    withdrawals = Transaction.objects.filter(transaction_type='withdrawal')
+    withdrawal_stats = {
+        'total_count': withdrawals.count(),
+        'pending_count': withdrawals.filter(status='pending').count(),
+        'processing_count': withdrawals.filter(status='processing').count(),
+        'completed_count': withdrawals.filter(status='completed').count(),
+        'total_amount': float(withdrawals.aggregate(Sum('amount'))['amount__sum'] or 0),
+        'pending_amount': float(withdrawals.filter(status='pending').aggregate(Sum('amount'))['amount__sum'] or 0),
+        'completed_amount': float(withdrawals.filter(status='completed').aggregate(Sum('amount'))['amount__sum'] or 0),
+    }
+    
+    # Recent transactions
+    recent_transactions = Transaction.objects.all().order_by('-created_at')[:10]
+    recent_serializer = TransactionSerializer(recent_transactions, many=True)
+    
+    return Response({
+        'success': True,
+        'deposits': deposit_stats,
+        'withdrawals': withdrawal_stats,
+        'recent_transactions': recent_serializer.data
+    }, status=status.HTTP_200_OK)
