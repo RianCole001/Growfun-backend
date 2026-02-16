@@ -162,7 +162,10 @@ if DEBUG:
 else:
     # Production: Restrict to specific origins
     CORS_ALLOWED_ORIGINS = [
-        'https://your-production-frontend.com',  # Update with your production URL
+        'https://growfund-dashboard.onrender.com',  # Production frontend
+        'http://localhost:3000',  # Local development
+        'http://localhost:3001',
+        'http://127.0.0.1:3000',
     ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -193,6 +196,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'https://growfun-backend.onrender.com',
+    'https://growfund-dashboard.onrender.com',  # Frontend on Render
 ]
 
 # Add ngrok URLs dynamically if in DEBUG mode
@@ -213,7 +217,7 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@growfund.com')
 
 # Frontend URL
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+FRONTEND_URL = config('FRONTEND_URL', default='https://growfund-dashboard.onrender.com')
 
 # Celery Configuration
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
