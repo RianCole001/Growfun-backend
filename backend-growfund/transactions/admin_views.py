@@ -335,24 +335,25 @@ def admin_get_investments(request):
     
     data = []
     for investment in investments:
-        current_value = investment.quantity * investment.current_price
-        profit_loss = current_value - investment.amount
-        profit_loss_percentage = (profit_loss / investment.amount * 100) if investment.amount > 0 else 0
+        invested_amount = investment.entry_price * investment.quantity
+        current_value = investment.quantity * (investment.current_price if investment.current_price else investment.entry_price)
+        profit_loss = current_value - invested_amount
+        profit_loss_percentage = (profit_loss / invested_amount * 100) if invested_amount > 0 else 0
         
         data.append({
-            'id': investment.id,
+            'id': str(investment.id),
             'user': investment.user.email,
             'user_id': investment.user.id,
             'type': 'crypto',
             'asset': investment.asset,
             'symbol': investment.asset,
-            'amount': str(investment.amount),
-            'quantity': str(investment.quantity),
-            'price_at_purchase': str(investment.entry_price),
-            'current_price': str(investment.current_price),
-            'current_value': str(current_value),
-            'profit_loss': str(profit_loss),
-            'profit_loss_percentage': float(profit_loss_percentage),
+            'amount': f"{invested_amount:.2f}",
+            'quantity': f"{investment.quantity:.8f}",
+            'price_at_purchase': f"{investment.entry_price:.2f}",
+            'current_price': f"{investment.current_price:.2f}" if investment.current_price else f"{investment.entry_price:.2f}",
+            'current_value': f"{current_value:.2f}",
+            'profit_loss': f"{profit_loss:.2f}",
+            'profit_loss_percentage': float(f"{profit_loss_percentage:.2f}"),
             'status': investment.status,
             'created_at': investment.created_at.isoformat()
         })

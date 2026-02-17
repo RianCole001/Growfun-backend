@@ -558,6 +558,7 @@ def crypto_sell(request):
     
     with db_transaction.atomic():
         # Calculate profit/loss
+        invested_amount = crypto_investment.entry_price * quantity
         profit_loss = (price - crypto_investment.entry_price) * quantity
         
         # Close the trade or update quantity
@@ -577,20 +578,16 @@ def crypto_sell(request):
                 entry_price=crypto_investment.entry_price,
                 exit_price=price,
                 quantity=quantity,
-                amount=crypto_investment.amount,
                 profit_loss=profit_loss,
-                profit_loss_percentage=(profit_loss / crypto_investment.amount) * 100,
+                profit_loss_percentage=(profit_loss / invested_amount) * 100 if invested_amount > 0 else 0,
                 close_reason='manual',
                 opened_at=crypto_investment.created_at,
                 closed_at=timezone.now()
             )
         else:
-            # Partial sell - update the investment
+            # Partial sell - update the investment quantity only
             remaining_quantity = crypto_investment.quantity - quantity
-            remaining_amount = remaining_quantity * crypto_investment.entry_price
-            
             crypto_investment.quantity = remaining_quantity
-            crypto_investment.amount = remaining_amount
             crypto_investment.save()
         
         # Credit user balance
@@ -622,24 +619,25 @@ def crypto_sell(request):
     return Response({
         'data': {
             'transaction': {
-                'id': crypto_investment.id,
+                'id': str(crypto_investment.id),
                 'type': 'Crypto Sale',
-                'amount': str(amount),
+                'amount': f"{amount:.2f}",
                 'asset': coin,
-                'quantity': str(quantity),
-                'price': str(price),
+                'quantity': f"{quantity:.8f}",
+                'price': f"{price:.2f}",
                 'status': 'completed',
                 'date': timezone.now().isoformat()
             },
-            'new_balance': str(request.user.balance),
+            'new_balance': f"{request.user.balance:.2f}",
             'updated_investment': {
-                'id': crypto_investment.id,
-                'quantity': str(crypto_investment.quantity),
-                'amount': str(crypto_investment.amount)
+                'id': str(crypto_investment.id),
+                'quantity': f"{crypto_investment.quantity:.8f}",
+                'amount': f"{(crypto_investment.entry_price * crypto_investment.quantity):.2f}"
             } if crypto_investment.status == 'open' else None,
-            'profit_loss': str(profit_loss),
+            'profit_loss': f"{profit_loss:.2f}",
             'message': 'Crypto sale successful'
-        }
+        },
+        'success': True
     }, status=status.HTTP_200_OK)
 
 
@@ -763,28 +761,29 @@ def user_crypto_portfolio(request):
     total_invested = Decimal('0')
     
     for investment in crypto_investments:
-        current_value = investment.quantity * investment.current_price
-        profit_loss = current_value - investment.amount
-        profit_loss_percentage = (profit_loss / investment.amount) * 100 if investment.amount > 0 else 0
+        invested_amount = investment.entry_price * investment.quantity
+        current_value = investment.quantity * (investment.current_price if investment.current_price else investment.entry_price)
+        profit_loss = current_value - invested_amount
+        profit_loss_percentage = (profit_loss / invested_amount) * 100 if invested_amount > 0 else 0
         
         portfolio.append({
-            'id': investment.id,
+            'id': str(investment.id),
             'type': 'crypto',
             'coin': investment.asset,
             'name': f"{investment.asset} Investment",
-            'amount': str(investment.amount),
-            'quantity': str(investment.quantity),
-            'price_at_purchase': str(investment.entry_price),
-            'current_price': str(investment.current_price),
-            'current_value': str(current_value),
-            'profit_loss': str(profit_loss),
-            'profit_loss_percentage': float(profit_loss_percentage),
+            'amount': f"{invested_amount:.2f}",
+            'quantity': f"{investment.quantity:.8f}",
+            'price_at_purchase': f"{investment.entry_price:.2f}",
+            'current_price': f"{investment.current_price:.2f}" if investment.current_price else f"{investment.entry_price:.2f}",
+            'current_value': f"{current_value:.2f}",
+            'profit_loss': f"{profit_loss:.2f}",
+            'profit_loss_percentage': float(f"{profit_loss_percentage:.2f}"),
             'status': 'active',
             'date': investment.created_at.isoformat()
         })
         
         total_value += current_value
-        total_invested += investment.amount
+        total_invested += invested_amount
     
     total_profit_loss = total_value - total_invested
     total_profit_loss_percentage = (total_profit_loss / total_invested) * 100 if total_invested > 0 else 0
@@ -793,11 +792,12 @@ def user_crypto_portfolio(request):
         'data': {
             'investments': portfolio,
             'summary': {
-                'total_invested': str(total_invested),
-                'total_value': str(total_value),
-                'total_profit_loss': str(total_profit_loss),
-                'total_profit_loss_percentage': float(total_profit_loss_percentage),
+                'total_invested': f"{total_invested:.2f}",
+                'total_value': f"{total_value:.2f}",
+                'total_profit_loss': f"{total_profit_loss:.2f}",
+                'total_profit_loss_percentage': float(f"{total_profit_loss_percentage:.2f}"),
                 'investment_count': len(portfolio)
             }
-        }
+        },
+        'success': True
     }, status=status.HTTP_200_OK)

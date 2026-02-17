@@ -413,8 +413,12 @@ class AdminUsersListView(generics.ListAPIView):
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             return User.objects.none()
         
-        # Optimize query to reduce memory usage
-        return User.objects.select_related().only(
+        # Optimize query to reduce memory usage - exclude soft-deleted users
+        return User.objects.select_related().filter(
+            is_active=True  # Only show active users (exclude soft-deleted)
+        ).exclude(
+            email__startswith='deleted_'  # Extra safety: exclude emails marked as deleted
+        ).only(
             'id', 'email', 'first_name', 'last_name', 'is_active', 
             'is_verified', 'is_staff', 'is_superuser', 'balance', 'date_joined', 'last_login'
         ).order_by('-date_joined')[:100]  # Limit to 100 users
@@ -809,9 +813,10 @@ def dashboard_stats(request):
     crypto_count = 0
     
     for investment in crypto_investments:
-        current_value = investment.quantity * investment.current_price
+        invested_amount = investment.entry_price * investment.quantity
+        current_value = investment.quantity * investment.current_price if investment.current_price else invested_amount
         crypto_total_value += current_value
-        crypto_total_invested += investment.amount
+        crypto_total_invested += invested_amount
         crypto_count += 1
     
     crypto_profit_loss = crypto_total_value - crypto_total_invested
