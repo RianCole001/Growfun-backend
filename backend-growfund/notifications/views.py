@@ -28,6 +28,7 @@ def notification_list(request):
     
     serializer = NotificationSerializer(page_obj.object_list, many=True)
     
+    # Return in the format expected by frontend
     return Response({
         'data': serializer.data,
         'pagination': {
@@ -36,7 +37,8 @@ def notification_list(request):
             'total_count': paginator.count,
             'has_next': page_obj.has_next(),
             'has_previous': page_obj.has_previous(),
-        }
+        },
+        'success': True
     }, status=status.HTTP_200_OK)
 
 
@@ -50,12 +52,14 @@ def mark_notification_read(request, notification_id):
         notification.save()
         
         return Response({
-            'data': {'success': True, 'message': 'Notification marked as read'}
+            'data': {'success': True, 'message': 'Notification marked as read'},
+            'success': True
         }, status=status.HTTP_200_OK)
     
     except Notification.DoesNotExist:
         return Response({
-            'error': {'message': 'Notification not found'}
+            'error': {'message': 'Notification not found'},
+            'success': False
         }, status=status.HTTP_404_NOT_FOUND)
 
 
@@ -105,3 +109,51 @@ def notification_stats(request):
             'read_notifications': total - unread
         }
     }, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_welcome_notifications(request):
+    """Create welcome notifications for new users (for testing)"""
+    from .models import Notification
+    
+    # Create welcome notifications
+    notifications_data = [
+        {
+            'title': 'Welcome to GrowFund!',
+            'message': 'Welcome to GrowFund! Your account has been successfully created. Start investing and growing your wealth today.',
+            'type': 'success'
+        },
+        {
+            'title': 'Complete Your Profile',
+            'message': 'Complete your profile to get the most out of GrowFund. Add your personal information and upload a profile picture.',
+            'type': 'info'
+        },
+        {
+            'title': 'Verify Your Email',
+            'message': 'Please verify your email address to secure your account and enable all features.',
+            'type': 'warning'
+        },
+        {
+            'title': 'Start Investing',
+            'message': 'Ready to start investing? Check out our investment plans and begin your journey to financial growth.',
+            'type': 'info'
+        }
+    ]
+    
+    created_notifications = []
+    for notif_data in notifications_data:
+        notification = Notification.create_notification(
+            user=request.user,
+            title=notif_data['title'],
+            message=notif_data['message'],
+            notification_type=notif_data['type']
+        )
+        created_notifications.append(notification)
+    
+    serializer = NotificationSerializer(created_notifications, many=True)
+    
+    return Response({
+        'success': True,
+        'message': f'Created {len(created_notifications)} welcome notifications',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)

@@ -394,3 +394,321 @@ class TradeViewSet(viewsets.ModelViewSet):
         history = TradeHistory.objects.filter(user=request.user)
         serializer = TradeHistorySerializer(history, many=True)
         return Response(serializer.data)
+
+# Crypto-specific endpoints for frontend compatibility
+from rest_framework.decorators import api_view, permission_classes
+from decimal import Decimal
+from django.db import transaction as db_transaction
+from accounts.models import User
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crypto_buy(request):
+    """
+    Buy cryptocurrency - creates a crypto investment record
+    """
+    coin = request.data.get('coin', '').upper()
+    amount = Decimal(str(request.data.get('amount', 0)))
+    price = Decimal(str(request.data.get('price', 0)))
+    
+    if not all([coin, amount, price]):
+        return Response({
+            'success': False,
+            'message': 'Missing required fields: coin, amount, price'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check user balance
+    if request.user.balance < amount:
+        return Response({
+            'success': False,
+            'message': 'Insufficient balance'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    quantity = amount / price
+    
+    with db_transaction.atomic():
+        # Create crypto investment (using Trade model for now)
+        crypto_investment = Trade.objects.create(
+            user=request.user,
+            asset=coin,
+            trade_type='buy',
+            entry_price=price,
+            current_price=price,
+            quantity=quantity,
+            amount=amount,
+            status='open'
+        )
+        
+        # Deduct from user balance
+        request.user.balance -= amount
+        request.user.save()
+        
+        # Create transaction record
+        from transactions.models import Transaction
+        Transaction.objects.create(
+            user=request.user,
+            transaction_type='investment',
+            amount=amount,
+            net_amount=amount,
+            status='completed',
+            reference=f"CRYPTO-BUY-{crypto_investment.id}",
+            description=f"Crypto purchase: {quantity:.8f} {coin} at ${price}"
+        )
+        
+        # Create notification
+        from notifications.models import Notification
+        Notification.create_notification(
+            user=request.user,
+            title="Crypto Purchase Completed",
+            message=f"Successfully purchased {quantity:.8f} {coin} for ${amount}",
+            notification_type='success'
+        )
+    
+    return Response({
+        'data': {
+            'investment': {
+                'id': crypto_investment.id,
+                'type': 'crypto',
+                'coin': coin,
+                'amount': str(amount),
+                'quantity': str(quantity),
+                'price_at_purchase': str(price),
+                'status': 'active',
+                'date': crypto_investment.created_at.isoformat()
+            },
+            'transaction': {
+                'id': crypto_investment.id,
+                'type': 'Crypto Purchase',
+                'amount': str(amount),
+                'asset': coin,
+                'quantity': str(quantity),
+                'price': str(price),
+                'status': 'completed',
+                'date': crypto_investment.created_at.isoformat()
+            },
+            'new_balance': str(request.user.balance),
+            'message': 'Crypto purchase successful'
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def crypto_sell(request):
+    """
+    Sell cryptocurrency - closes crypto investment
+    """
+    investment_id = request.data.get('investment_id')
+    coin = request.data.get('coin', '').upper()
+    amount = Decimal(str(request.data.get('amount', 0)))
+    price = Decimal(str(request.data.get('price', 0)))
+    quantity = Decimal(str(request.data.get('quantity', 0)))
+    
+    if not all([investment_id, coin, amount, price, quantity]):
+        return Response({
+            'success': False,
+            'message': 'Missing required fields: investment_id, coin, amount, price, quantity'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Find the crypto investment
+        crypto_investment = Trade.objects.get(
+            id=investment_id, 
+            user=request.user, 
+            asset=coin,
+            status='open'
+        )
+    except Trade.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Crypto investment not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if selling quantity is valid
+    if quantity > crypto_investment.quantity:
+        return Response({
+            'success': False,
+            'message': 'Cannot sell more than you own'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    with db_transaction.atomic():
+        # Calculate profit/loss
+        profit_loss = (price - crypto_investment.entry_price) * quantity
+        
+        # Close the trade or update quantity
+        if quantity == crypto_investment.quantity:
+            # Selling all - close the investment
+            crypto_investment.exit_price = price
+            crypto_investment.profit_loss = profit_loss
+            crypto_investment.status = 'closed'
+            crypto_investment.closed_at = timezone.now()
+            crypto_investment.save()
+            
+            # Move to trade history
+            TradeHistory.objects.create(
+                user=request.user,
+                asset=coin,
+                trade_type='buy',
+                entry_price=crypto_investment.entry_price,
+                exit_price=price,
+                quantity=quantity,
+                amount=crypto_investment.amount,
+                profit_loss=profit_loss,
+                profit_loss_percentage=(profit_loss / crypto_investment.amount) * 100,
+                close_reason='manual',
+                opened_at=crypto_investment.created_at,
+                closed_at=timezone.now()
+            )
+        else:
+            # Partial sell - update the investment
+            remaining_quantity = crypto_investment.quantity - quantity
+            remaining_amount = remaining_quantity * crypto_investment.entry_price
+            
+            crypto_investment.quantity = remaining_quantity
+            crypto_investment.amount = remaining_amount
+            crypto_investment.save()
+        
+        # Credit user balance
+        request.user.balance += amount
+        request.user.save()
+        
+        # Create transaction record
+        from transactions.models import Transaction
+        Transaction.objects.create(
+            user=request.user,
+            transaction_type='profit' if profit_loss > 0 else 'withdrawal',
+            amount=amount,
+            net_amount=amount,
+            status='completed',
+            reference=f"CRYPTO-SELL-{crypto_investment.id}",
+            description=f"Crypto sale: {quantity:.8f} {coin} at ${price}"
+        )
+        
+        # Create notification
+        from notifications.models import Notification
+        notification_type = 'success' if profit_loss >= 0 else 'warning'
+        Notification.create_notification(
+            user=request.user,
+            title="Crypto Sale Completed",
+            message=f"Sold {quantity:.8f} {coin} for ${amount}. P&L: ${profit_loss:.2f}",
+            notification_type=notification_type
+        )
+    
+    return Response({
+        'data': {
+            'transaction': {
+                'id': crypto_investment.id,
+                'type': 'Crypto Sale',
+                'amount': str(amount),
+                'asset': coin,
+                'quantity': str(quantity),
+                'price': str(price),
+                'status': 'completed',
+                'date': timezone.now().isoformat()
+            },
+            'new_balance': str(request.user.balance),
+            'updated_investment': {
+                'id': crypto_investment.id,
+                'quantity': str(crypto_investment.quantity),
+                'amount': str(crypto_investment.amount)
+            } if crypto_investment.status == 'open' else None,
+            'profit_loss': str(profit_loss),
+            'message': 'Crypto sale successful'
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def crypto_prices(request):
+    """
+    Get crypto prices - mock data for now, replace with real API later
+    """
+    # Mock prices - replace with real API integration when ready
+    prices = {
+        'BTC': {
+            'price': 65000.00,
+            'change24h': 2.1,
+            'change7d': -1.5,
+            'change30d': 8.7
+        },
+        'ETH': {
+            'price': 3200.00,
+            'change24h': 1.8,
+            'change7d': 3.2,
+            'change30d': 15.4
+        },
+        'EXACOIN': {
+            'price': 60.00,
+            'change24h': 45.2,
+            'change7d': 12.8,
+            'change30d': 89.5
+        },
+        'USDT': {
+            'price': 1.00,
+            'change24h': 0.0,
+            'change7d': 0.0,
+            'change30d': 0.0
+        }
+    }
+    
+    return Response({
+        'data': prices
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_crypto_portfolio(request):
+    """
+    Get user's crypto portfolio
+    """
+    crypto_investments = Trade.objects.filter(
+        user=request.user,
+        status='open'
+    ).exclude(asset__in=['gold'])  # Exclude non-crypto assets
+    
+    portfolio = []
+    total_value = Decimal('0')
+    total_invested = Decimal('0')
+    
+    for investment in crypto_investments:
+        current_value = investment.quantity * investment.current_price
+        profit_loss = current_value - investment.amount
+        profit_loss_percentage = (profit_loss / investment.amount) * 100 if investment.amount > 0 else 0
+        
+        portfolio.append({
+            'id': investment.id,
+            'type': 'crypto',
+            'coin': investment.asset,
+            'name': f"{investment.asset} Investment",
+            'amount': str(investment.amount),
+            'quantity': str(investment.quantity),
+            'price_at_purchase': str(investment.entry_price),
+            'current_price': str(investment.current_price),
+            'current_value': str(current_value),
+            'profit_loss': str(profit_loss),
+            'profit_loss_percentage': float(profit_loss_percentage),
+            'status': 'active',
+            'date': investment.created_at.isoformat()
+        })
+        
+        total_value += current_value
+        total_invested += investment.amount
+    
+    total_profit_loss = total_value - total_invested
+    total_profit_loss_percentage = (total_profit_loss / total_invested) * 100 if total_invested > 0 else 0
+    
+    return Response({
+        'data': {
+            'investments': portfolio,
+            'summary': {
+                'total_invested': str(total_invested),
+                'total_value': str(total_value),
+                'total_profit_loss': str(total_profit_loss),
+                'total_profit_loss_percentage': float(total_profit_loss_percentage),
+                'investment_count': len(portfolio)
+            }
+        }
+    }, status=status.HTTP_200_OK)

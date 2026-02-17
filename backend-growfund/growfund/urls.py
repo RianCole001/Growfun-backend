@@ -11,6 +11,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
     path('api/investments/', include('investments.urls')),
+    path('api/crypto/', include('investments.urls')),  # Alias for crypto endpoints
     path('api/transactions/', include('transactions.urls')),
     path('api/referrals/', include('referrals.urls')),
     path('api/notifications/', include('notifications.urls')),

@@ -4,8 +4,13 @@ from . import views, korapay_views
 app_name = 'transactions'
 
 urlpatterns = [
-    # Transaction list
+    # Transaction list and summary
     path('', views.TransactionListView.as_view(), name='transaction-list'),
+    path('summary/', views.transaction_summary, name='transaction-summary'),
+    
+    # Generic endpoints (for frontend compatibility)
+    path('deposit/', views.generic_deposit, name='generic-deposit'),
+    path('withdraw/', views.generic_withdraw, name='generic-withdraw'),
     
     # MTN MoMo endpoints
     path('momo/deposit/', views.momo_deposit, name='momo-deposit'),

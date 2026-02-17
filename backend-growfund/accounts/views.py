@@ -474,19 +474,54 @@ class AdminUserDetailView(APIView):
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
     
     def delete(self, request, user_id):
-        """Delete a user"""
+        """Delete a user - with proper error handling"""
         if not self.check_admin(request):
             return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
         
         try:
             user = User.objects.get(id=user_id)
+            
+            # Prevent admin from deleting themselves
+            if user.id == request.user.id:
+                return Response({
+                    'error': 'Cannot delete your own account'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prevent deleting superusers (unless current user is superuser)
+            if user.is_superuser and not request.user.is_superuser:
+                return Response({
+                    'error': 'Cannot delete superuser account'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
             email = user.email
-            user.delete()
+            
+            # Use soft delete instead of hard delete to preserve data integrity
+            user.is_active = False
+            user.email = f"deleted_{user.id}_{user.email}"  # Prevent email conflicts
+            user.save()
+            
+            # Create notification for admin
+            from notifications.models import Notification
+            Notification.create_notification(
+                user=request.user,
+                title="User Account Deleted",
+                message=f"Successfully deleted user account: {email}",
+                notification_type='info'
+            )
+            
             return Response({
+                'success': True,
                 'message': f'User {email} deleted successfully'
             }, status=status.HTTP_200_OK)
+            
         except User.DoesNotExist:
-            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to delete user: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AdminUserVerifyView(APIView):
@@ -532,21 +567,62 @@ class AdminUserSuspendView(APIView):
             user = User.objects.get(id=user_id)
             action = request.data.get('action', 'suspend')  # 'suspend' or 'unsuspend'
             
+            # Prevent admin from suspending themselves
+            if user.id == request.user.id:
+                return Response({
+                    'error': 'Cannot suspend your own account'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prevent suspending superusers (unless current user is superuser)
+            if user.is_superuser and not request.user.is_superuser:
+                return Response({
+                    'error': 'Cannot suspend superuser account'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
             if action == 'suspend':
                 user.is_active = False
+                message = f'User {user.email} suspended successfully'
+                notification_msg = f"User account suspended: {user.email}"
             elif action == 'unsuspend':
                 user.is_active = True
+                message = f'User {user.email} unsuspended successfully'
+                notification_msg = f"User account unsuspended: {user.email}"
             else:
                 return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
             
             user.save()
+            
+            # Create notification for admin
+            from notifications.models import Notification
+            Notification.create_notification(
+                user=request.user,
+                title="User Status Updated",
+                message=notification_msg,
+                notification_type='info'
+            )
+            
+            # Create notification for the affected user (if unsuspended)
+            if action == 'unsuspend':
+                Notification.create_notification(
+                    user=user,
+                    title="Account Reactivated",
+                    message="Your account has been reactivated by an administrator.",
+                    notification_type='success'
+                )
+            
             serializer = UserSerializer(user)
             return Response({
-                'message': f'User {action}ed successfully',
+                'success': True,
+                'message': message,
                 'data': serializer.data
             }, status=status.HTTP_200_OK)
+            
         except User.DoesNotExist:
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to update user status: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class AdminUserResetPasswordView(APIView):
@@ -628,3 +704,256 @@ class ReferralStatsView(APIView):
         }
         
         return Response(stats, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_referral_code(request):
+    """Generate new referral code for user"""
+    import random
+    import string
+    
+    # Generate new unique referral code
+    while True:
+        new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        if not User.objects.filter(referral_code=new_code).exists():
+            break
+    
+    # Update user's referral code
+    request.user.referral_code = new_code
+    request.user.save()
+    
+    # Create notification
+    from notifications.models import Notification
+    Notification.create_notification(
+        user=request.user,
+        title="New Referral Code Generated",
+        message=f"Your new referral code is: {new_code}",
+        notification_type='info'
+    )
+    
+    return Response({
+        'data': {
+            'referral_code': new_code,
+            'referral_link': f"{settings.FRONTEND_URL}/register?ref={new_code}"
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard_stats(request):
+    """Get dashboard statistics for user"""
+    user = request.user
+    
+    # Investment stats
+    from investments.models import CapitalInvestmentPlan, Trade
+    active_investments = CapitalInvestmentPlan.objects.filter(user=user, status='active').count()
+    total_invested = CapitalInvestmentPlan.objects.filter(user=user).aggregate(
+        total=models.Sum('initial_amount')
+    )['total'] or 0
+    
+    # Trading stats
+    open_trades = Trade.objects.filter(user=user, status='open').count()
+    total_trades = Trade.objects.filter(user=user).count()
+    
+    # Transaction stats
+    from transactions.models import Transaction
+    total_deposits = Transaction.objects.filter(
+        user=user, transaction_type='deposit', status='completed'
+    ).aggregate(total=models.Sum('amount'))['total'] or 0
+    
+    total_withdrawals = Transaction.objects.filter(
+        user=user, transaction_type='withdrawal', status='completed'
+    ).aggregate(total=models.Sum('amount'))['total'] or 0
+    
+    # Referral stats
+    total_referrals = Referral.objects.filter(referrer=user).count()
+    referral_earnings = Referral.objects.filter(
+        referrer=user, reward_claimed=True
+    ).aggregate(total=models.Sum('reward_amount'))['total'] or 0
+    
+    return Response({
+        'data': {
+            'balance': str(user.balance),
+            'investments': {
+                'active_count': active_investments,
+                'total_invested': str(total_invested)
+            },
+            'trading': {
+                'open_trades': open_trades,
+                'total_trades': total_trades
+            },
+            'transactions': {
+                'total_deposits': str(total_deposits),
+                'total_withdrawals': str(total_withdrawals)
+            },
+            'referrals': {
+                'total_count': total_referrals,
+                'total_earnings': str(referral_earnings)
+            }
+        }
+    }, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_suspended_users(request):
+    """Get list of suspended users (admin only)"""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    suspended_users = User.objects.filter(is_active=False).order_by('-date_joined')
+    serializer = UserSerializer(suspended_users, many=True)
+    
+    return Response({
+        'data': serializer.data,
+        'count': suspended_users.count()
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_user_stats(request):
+    """Get user statistics for admin dashboard"""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from django.db.models import Count, Sum
+    from datetime import datetime, timedelta
+    
+    # Basic user counts
+    total_users = User.objects.count()
+    active_users = User.objects.filter(is_active=True).count()
+    suspended_users = User.objects.filter(is_active=False).count()
+    verified_users = User.objects.filter(is_verified=True).count()
+    unverified_users = User.objects.filter(is_verified=False).count()
+    
+    # Recent registrations (last 30 days)
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_registrations = User.objects.filter(date_joined__gte=thirty_days_ago).count()
+    
+    # Total balance across all users
+    total_balance = User.objects.aggregate(total=Sum('balance'))['total'] or 0
+    
+    return Response({
+        'data': {
+            'total_users': total_users,
+            'active_users': active_users,
+            'suspended_users': suspended_users,
+            'verified_users': verified_users,
+            'unverified_users': unverified_users,
+            'recent_registrations': recent_registrations,
+            'total_platform_balance': str(total_balance)
+        }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_test_notification(request):
+    """Create a test notification for the current user"""
+    from notifications.models import Notification
+    
+    title = request.data.get('title', 'Test Notification')
+    message = request.data.get('message', 'This is a test notification to verify the system is working.')
+    notification_type = request.data.get('type', 'info')
+    
+    notification = Notification.create_notification(
+        user=request.user,
+        title=title,
+        message=message,
+        notification_type=notification_type
+    )
+    
+    from notifications.serializers import NotificationSerializer
+    serializer = NotificationSerializer(notification)
+    
+    return Response({
+        'success': True,
+        'message': 'Test notification created',
+        'data': serializer.data
+    }, status=status.HTTP_201_CREATED)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_dashboard_overview(request):
+    """Get complete admin dashboard overview"""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from django.db.models import Count, Sum
+    from datetime import datetime, timedelta
+    from transactions.models import Transaction
+    from investments.models import CapitalInvestmentPlan, Trade
+    
+    # User statistics
+    total_users = User.objects.count()
+    active_users = User.objects.filter(is_active=True).count()
+    suspended_users = User.objects.filter(is_active=False).count()
+    verified_users = User.objects.filter(is_verified=True).count()
+    
+    # Financial statistics
+    total_balance = User.objects.aggregate(total=Sum('balance'))['total'] or 0
+    
+    # Transaction statistics
+    total_deposits = Transaction.objects.filter(
+        transaction_type='deposit', status='completed'
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    
+    total_withdrawals = Transaction.objects.filter(
+        transaction_type='withdrawal', status='completed'
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    
+    pending_deposits = Transaction.objects.filter(
+        transaction_type='deposit', status__in=['pending', 'processing']
+    ).count()
+    
+    pending_withdrawals = Transaction.objects.filter(
+        transaction_type='withdrawal', status__in=['pending', 'processing']
+    ).count()
+    
+    # Investment statistics
+    total_investments = CapitalInvestmentPlan.objects.count()
+    active_investments = CapitalInvestmentPlan.objects.filter(status='active').count()
+    total_invested = CapitalInvestmentPlan.objects.aggregate(
+        total=Sum('initial_amount')
+    )['total'] or 0
+    
+    # Trading statistics
+    total_trades = Trade.objects.count()
+    open_trades = Trade.objects.filter(status='open').count()
+    
+    # Recent activity (last 7 days)
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    recent_users = User.objects.filter(date_joined__gte=seven_days_ago).count()
+    recent_transactions = Transaction.objects.filter(created_at__gte=seven_days_ago).count()
+    
+    return Response({
+        'data': {
+            'users': {
+                'total': total_users,
+                'active': active_users,
+                'suspended': suspended_users,
+                'verified': verified_users,
+                'recent_registrations': recent_users
+            },
+            'finances': {
+                'total_platform_balance': str(total_balance),
+                'total_deposits': str(total_deposits),
+                'total_withdrawals': str(total_withdrawals),
+                'pending_deposits': pending_deposits,
+                'pending_withdrawals': pending_withdrawals
+            },
+            'investments': {
+                'total_plans': total_investments,
+                'active_plans': active_investments,
+                'total_invested': str(total_invested)
+            },
+            'trading': {
+                'total_trades': total_trades,
+                'open_trades': open_trades
+            },
+            'activity': {
+                'recent_users': recent_users,
+                'recent_transactions': recent_transactions
+            }
+        }
+    }, status=status.HTTP_200_OK)

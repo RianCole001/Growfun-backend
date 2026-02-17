@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.db import models
 from decimal import Decimal
 import uuid
 
@@ -665,4 +666,93 @@ def admin_transaction_stats(request):
         'deposits': deposit_stats,
         'withdrawals': withdrawal_stats,
         'recent_transactions': recent_serializer.data
+    }, status=status.HTTP_200_OK)
+
+# Generic transaction endpoints for frontend compatibility
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generic_deposit(request):
+    """
+    Generic deposit endpoint - routes to appropriate payment method
+    """
+    method = request.data.get('method', 'korapay')
+    
+    if method == 'momo':
+        return momo_deposit(request)
+    elif method == 'korapay' or method == 'bank_transfer':
+        # Import korapay views
+        from .korapay_views import korapay_deposit
+        return korapay_deposit(request)
+    else:
+        return Response({
+            'success': False,
+            'message': 'Invalid payment method. Use: momo, korapay, or bank_transfer'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generic_withdraw(request):
+    """
+    Generic withdrawal endpoint - routes to appropriate payment method
+    """
+    method = request.data.get('method', 'bank_transfer')
+    
+    if method == 'momo':
+        return momo_withdrawal(request)
+    elif method == 'bank_transfer':
+        from .korapay_views import korapay_withdrawal_bank
+        return korapay_withdrawal_bank(request)
+    elif method == 'mobile_money':
+        from .korapay_views import korapay_withdrawal_mobile
+        return korapay_withdrawal_mobile(request)
+    else:
+        return Response({
+            'success': False,
+            'message': 'Invalid withdrawal method. Use: momo, bank_transfer, or mobile_money'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def transaction_summary(request):
+    """
+    Get transaction summary for user dashboard
+    """
+    user_transactions = Transaction.objects.filter(user=request.user)
+    
+    # Calculate totals
+    total_deposits = user_transactions.filter(
+        transaction_type='deposit', 
+        status='completed'
+    ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
+    
+    total_withdrawals = user_transactions.filter(
+        transaction_type='withdrawal', 
+        status='completed'
+    ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
+    
+    pending_deposits = user_transactions.filter(
+        transaction_type='deposit', 
+        status__in=['pending', 'processing']
+    ).count()
+    
+    pending_withdrawals = user_transactions.filter(
+        transaction_type='withdrawal', 
+        status__in=['pending', 'processing']
+    ).count()
+    
+    # Recent transactions (last 5)
+    recent_transactions = user_transactions.order_by('-created_at')[:5]
+    recent_serializer = TransactionSerializer(recent_transactions, many=True)
+    
+    return Response({
+        'data': {
+            'total_deposits': str(total_deposits),
+            'total_withdrawals': str(total_withdrawals),
+            'pending_deposits': pending_deposits,
+            'pending_withdrawals': pending_withdrawals,
+            'current_balance': str(request.user.balance),
+            'recent_transactions': recent_serializer.data
+        }
     }, status=status.HTTP_200_OK)
