@@ -406,16 +406,27 @@ from accounts.models import User
 @permission_classes([IsAuthenticated])
 def crypto_buy(request):
     """
-    Buy cryptocurrency - creates a crypto investment record
+    Buy cryptocurrency - uses admin-controlled buy price
     """
+    from .admin_models import AdminCryptoPrice
+    
     coin = request.data.get('coin', '').upper()
     amount = Decimal(str(request.data.get('amount', 0)))
-    price = Decimal(str(request.data.get('price', 0)))
     
-    if not all([coin, amount, price]):
+    if not all([coin, amount]):
         return Response({
             'success': False,
-            'message': 'Missing required fields: coin, amount, price'
+            'message': 'Missing required fields: coin, amount'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get admin-controlled price
+    try:
+        admin_price = AdminCryptoPrice.objects.get(coin=coin, is_active=True)
+        price = admin_price.buy_price  # Use admin buy price
+    except AdminCryptoPrice.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': f'{coin} is not available for trading or price not set by admin'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Check user balance
@@ -497,19 +508,32 @@ def crypto_buy(request):
 @permission_classes([IsAuthenticated])
 def crypto_sell(request):
     """
-    Sell cryptocurrency - closes crypto investment
+    Sell cryptocurrency - uses admin-controlled sell price
     """
+    from .admin_models import AdminCryptoPrice
+    
     investment_id = request.data.get('investment_id')
     coin = request.data.get('coin', '').upper()
-    amount = Decimal(str(request.data.get('amount', 0)))
-    price = Decimal(str(request.data.get('price', 0)))
     quantity = Decimal(str(request.data.get('quantity', 0)))
     
-    if not all([investment_id, coin, amount, price, quantity]):
+    if not all([investment_id, coin, quantity]):
         return Response({
             'success': False,
-            'message': 'Missing required fields: investment_id, coin, amount, price, quantity'
+            'message': 'Missing required fields: investment_id, coin, quantity'
         }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Get admin-controlled sell price
+    try:
+        admin_price = AdminCryptoPrice.objects.get(coin=coin, is_active=True)
+        price = admin_price.sell_price  # Use admin sell price
+    except AdminCryptoPrice.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': f'{coin} is not available for trading or price not set by admin'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Calculate sell amount
+    amount = quantity * price
     
     try:
         # Find the crypto investment
@@ -623,35 +647,51 @@ def crypto_sell(request):
 @permission_classes([IsAuthenticated])
 def crypto_prices(request):
     """
-    Get crypto prices - mock data for now, replace with real API later
+    Get crypto prices - uses admin-controlled prices if available, otherwise mock data
     """
-    # Mock prices - replace with real API integration when ready
-    prices = {
-        'BTC': {
-            'price': 65000.00,
-            'change24h': 2.1,
-            'change7d': -1.5,
-            'change30d': 8.7
-        },
-        'ETH': {
-            'price': 3200.00,
-            'change24h': 1.8,
-            'change7d': 3.2,
-            'change30d': 15.4
-        },
-        'EXACOIN': {
-            'price': 60.00,
-            'change24h': 45.2,
-            'change7d': 12.8,
-            'change30d': 89.5
-        },
-        'USDT': {
-            'price': 1.00,
-            'change24h': 0.0,
-            'change7d': 0.0,
-            'change30d': 0.0
+    from .admin_models import AdminCryptoPrice
+    
+    # Try to get admin-controlled prices
+    admin_prices = AdminCryptoPrice.objects.filter(is_active=True)
+    
+    if admin_prices.exists():
+        # Use admin-controlled prices
+        prices = {}
+        for price in admin_prices:
+            prices[price.coin] = {
+                'price': float(price.buy_price),  # Users see buy price
+                'change24h': float(price.change_24h),
+                'change7d': float(price.change_7d),
+                'change30d': float(price.change_30d)
+            }
+    else:
+        # Fallback to mock prices if no admin prices set
+        prices = {
+            'BTC': {
+                'price': 65000.00,
+                'change24h': 2.1,
+                'change7d': -1.5,
+                'change30d': 8.7
+            },
+            'ETH': {
+                'price': 3200.00,
+                'change24h': 1.8,
+                'change7d': 3.2,
+                'change30d': 15.4
+            },
+            'EXACOIN': {
+                'price': 60.00,
+                'change24h': 45.2,
+                'change7d': 12.8,
+                'change30d': 89.5
+            },
+            'USDT': {
+                'price': 1.00,
+                'change24h': 0.0,
+                'change7d': 0.0,
+                'change30d': 0.0
+            }
         }
-    }
     
     return Response({
         'data': prices

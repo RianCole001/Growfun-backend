@@ -5,6 +5,9 @@ import uuid
 
 User = get_user_model()
 
+# Import admin models
+from .admin_models import AdminCryptoPrice, CryptoPriceHistory
+
 
 class CapitalInvestmentPlan(models.Model):
     """Model for capital investment plans with monthly periods and growth rates"""

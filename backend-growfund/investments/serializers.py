@@ -153,3 +153,88 @@ class TradeHistorySerializer(serializers.ModelSerializer):
             'profit_loss', 'profit_loss_percentage', 'close_reason', 'opened_at', 'closed_at'
         ]
         read_only_fields = ['id', 'closed_at']
+
+
+# Admin Crypto Price Serializers
+from .admin_models import AdminCryptoPrice, CryptoPriceHistory
+
+
+class AdminCryptoPriceSerializer(serializers.ModelSerializer):
+    """Serializer for admin crypto price management"""
+    spread = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    spread_percentage = serializers.DecimalField(max_digits=8, decimal_places=4, read_only=True)
+    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
+    
+    class Meta:
+        model = AdminCryptoPrice
+        fields = [
+            'id', 'coin', 'name', 'buy_price', 'sell_price', 
+            'change_24h', 'change_7d', 'change_30d',
+            'spread', 'spread_percentage', 'is_active',
+            'last_updated', 'updated_by_email', 'created_at'
+        ]
+        read_only_fields = ['id', 'last_updated', 'created_at']
+    
+    def validate(self, data):
+        """Ensure sell price is less than buy price"""
+        buy_price = data.get('buy_price')
+        sell_price = data.get('sell_price')
+        
+        if buy_price and sell_price and sell_price >= buy_price:
+            raise serializers.ValidationError({
+                'sell_price': 'Sell price must be less than buy price to maintain spread.'
+            })
+        
+        # Recommend 3-5% spread
+        if buy_price and sell_price:
+            spread_pct = ((buy_price - sell_price) / buy_price) * 100
+            if spread_pct < 2:
+                raise serializers.ValidationError({
+                    'sell_price': f'Spread is too low ({spread_pct:.2f}%). Recommended: 3-5% for profitability.'
+                })
+        
+        return data
+
+
+class UpdateCryptoPriceSerializer(serializers.Serializer):
+    """Serializer for updating crypto prices"""
+    coin = serializers.CharField(max_length=10)
+    buy_price = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0.01)
+    sell_price = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0.01)
+    change_24h = serializers.DecimalField(max_digits=8, decimal_places=4, required=False, default=0)
+    change_7d = serializers.DecimalField(max_digits=8, decimal_places=4, required=False, default=0)
+    change_30d = serializers.DecimalField(max_digits=8, decimal_places=4, required=False, default=0)
+    
+    def validate(self, data):
+        """Ensure sell price is less than buy price"""
+        if data['sell_price'] >= data['buy_price']:
+            raise serializers.ValidationError({
+                'sell_price': 'Sell price must be less than buy price.'
+            })
+        
+        # Check spread percentage
+        spread_pct = ((data['buy_price'] - data['sell_price']) / data['buy_price']) * 100
+        if spread_pct < 2:
+            raise serializers.ValidationError({
+                'sell_price': f'Spread too low ({spread_pct:.2f}%). Recommended: 3-5%.'
+            })
+        
+        return data
+
+
+class PublicCryptoPriceSerializer(serializers.Serializer):
+    """Serializer for public crypto prices (users see buy prices only)"""
+    price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    change24h = serializers.DecimalField(max_digits=8, decimal_places=4)
+    change7d = serializers.DecimalField(max_digits=8, decimal_places=4)
+    change30d = serializers.DecimalField(max_digits=8, decimal_places=4)
+
+
+class CryptoPriceHistorySerializer(serializers.ModelSerializer):
+    """Serializer for price history"""
+    updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
+    
+    class Meta:
+        model = CryptoPriceHistory
+        fields = ['id', 'coin', 'buy_price', 'sell_price', 'change_24h', 'updated_by_email', 'created_at']
+        read_only_fields = ['id', 'created_at']

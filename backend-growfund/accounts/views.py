@@ -514,13 +514,16 @@ class AdminUserDetailView(APIView):
             user.save()
             
             # Create notification for admin
-            from notifications.models import Notification
-            Notification.create_notification(
-                user=request.user,
-                title="User Account Deleted",
-                message=f"Successfully deleted user account: {email}",
-                notification_type='info'
-            )
+            try:
+                from notifications.models import Notification
+                Notification.create_notification(
+                    user=request.user,
+                    title="User Account Deleted",
+                    message=f"Successfully deleted user account: {email}",
+                    notification_type='info'
+                )
+            except Exception as e:
+                print(f"Warning: Could not create notification: {e}")
             
             return Response({
                 'success': True,
@@ -606,22 +609,25 @@ class AdminUserSuspendView(APIView):
             user.save()
             
             # Create notification for admin
-            from notifications.models import Notification
-            Notification.create_notification(
-                user=request.user,
-                title="User Status Updated",
-                message=notification_msg,
-                notification_type='info'
-            )
-            
-            # Create notification for the affected user (if unsuspended)
-            if action == 'unsuspend':
+            try:
+                from notifications.models import Notification
                 Notification.create_notification(
-                    user=user,
-                    title="Account Reactivated",
-                    message="Your account has been reactivated by an administrator.",
-                    notification_type='success'
+                    user=request.user,
+                    title="User Status Updated",
+                    message=notification_msg,
+                    notification_type='info'
                 )
+                
+                # Create notification for the affected user (if unsuspended)
+                if action == 'unsuspend':
+                    Notification.create_notification(
+                        user=user,
+                        title="Account Reactivated",
+                        message="Your account has been reactivated by an administrator.",
+                        notification_type='success'
+                    )
+            except Exception as e:
+                print(f"Warning: Could not create notification: {e}")
             
             serializer = UserSerializer(user)
             return Response({
@@ -974,3 +980,144 @@ def admin_dashboard_overview(request):
             }
         }
     }, status=status.HTTP_200_OK)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def debug_admin_delete(request, user_id):
+    """Debug version of admin delete with detailed logging"""
+    print(f"🔧 DEBUG: Admin delete called for user {user_id}")
+    print(f"🔧 DEBUG: Request user: {request.user.email} (staff: {request.user.is_staff}, superuser: {request.user.is_superuser})")
+    
+    # Check admin permissions
+    if not (request.user.is_staff or request.user.is_superuser):
+        print("❌ DEBUG: Admin access denied")
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        user = User.objects.get(id=user_id)
+        print(f"✅ DEBUG: Found user {user.email}")
+        
+        # Prevent admin from deleting themselves
+        if user.id == request.user.id:
+            print("❌ DEBUG: Cannot delete own account")
+            return Response({
+                'error': 'Cannot delete your own account'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Prevent deleting superusers (unless current user is superuser)
+        if user.is_superuser and not request.user.is_superuser:
+            print("❌ DEBUG: Cannot delete superuser")
+            return Response({
+                'error': 'Cannot delete superuser account'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        email = user.email
+        print(f"🔧 DEBUG: Performing soft delete for {email}")
+        
+        # Use soft delete instead of hard delete to preserve data integrity
+        user.is_active = False
+        user.email = f"deleted_{user.id}_{user.email}"  # Prevent email conflicts
+        user.save()
+        print(f"✅ DEBUG: User soft deleted successfully")
+        
+        return Response({
+            'success': True,
+            'message': f'User {email} deleted successfully',
+            'debug': {
+                'user_id': user_id,
+                'original_email': email,
+                'new_email': user.email,
+                'is_active': user.is_active
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        print(f"❌ DEBUG: User {user_id} not found")
+        return Response({
+            'error': 'User not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print(f"❌ DEBUG: Exception occurred: {str(e)}")
+        return Response({
+            'error': f'Failed to delete user: {str(e)}',
+            'debug': {
+                'exception_type': type(e).__name__,
+                'exception_message': str(e)
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def debug_admin_suspend(request, user_id):
+    """Debug version of admin suspend with detailed logging"""
+    print(f"🔧 DEBUG: Admin suspend called for user {user_id}")
+    print(f"🔧 DEBUG: Request user: {request.user.email} (staff: {request.user.is_staff}, superuser: {request.user.is_superuser})")
+    print(f"🔧 DEBUG: Request data: {request.data}")
+    
+    # Check admin permissions
+    if not (request.user.is_staff or request.user.is_superuser):
+        print("❌ DEBUG: Admin access denied")
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        user = User.objects.get(id=user_id)
+        print(f"✅ DEBUG: Found user {user.email}")
+        
+        action = request.data.get('action', 'suspend')
+        print(f"🔧 DEBUG: Action requested: {action}")
+        
+        # Prevent admin from suspending themselves
+        if user.id == request.user.id:
+            print("❌ DEBUG: Cannot suspend own account")
+            return Response({
+                'error': 'Cannot suspend your own account'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Prevent suspending superusers (unless current user is superuser)
+        if user.is_superuser and not request.user.is_superuser:
+            print("❌ DEBUG: Cannot suspend superuser")
+            return Response({
+                'error': 'Cannot suspend superuser account'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        original_status = user.is_active
+        
+        if action == 'suspend':
+            user.is_active = False
+            message = f'User {user.email} suspended successfully'
+        elif action == 'unsuspend':
+            user.is_active = True
+            message = f'User {user.email} unsuspended successfully'
+        else:
+            print(f"❌ DEBUG: Invalid action: {action}")
+            return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.save()
+        print(f"✅ DEBUG: User status updated from {original_status} to {user.is_active}")
+        
+        return Response({
+            'success': True,
+            'message': message,
+            'debug': {
+                'user_id': user_id,
+                'email': user.email,
+                'action': action,
+                'original_status': original_status,
+                'new_status': user.is_active
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        print(f"❌ DEBUG: User {user_id} not found")
+        return Response({
+            'error': 'User not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print(f"❌ DEBUG: Exception occurred: {str(e)}")
+        return Response({
+            'error': f'Failed to update user status: {str(e)}',
+            'debug': {
+                'exception_type': type(e).__name__,
+                'exception_message': str(e)
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
