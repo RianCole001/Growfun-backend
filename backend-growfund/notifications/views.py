@@ -255,7 +255,14 @@ def admin_send_notification(request):
 @permission_classes([IsAuthenticated])
 def admin_get_notifications(request):
     """Get all admin-created notifications (admin only)"""
+    # Debug logging
+    print(f"🔍 Admin get notifications called")
+    print(f"🔍 User: {request.user.email if request.user.is_authenticated else 'Anonymous'}")
+    print(f"🔍 Is staff: {request.user.is_staff if request.user.is_authenticated else False}")
+    print(f"🔍 Is superuser: {request.user.is_superuser if request.user.is_authenticated else False}")
+    
     if not (request.user.is_staff or request.user.is_superuser):
+        print(f"❌ Admin access denied for user: {request.user.email if request.user.is_authenticated else 'Anonymous'}")
         return Response({
             'success': False,
             'error': 'Admin access required'
@@ -277,6 +284,7 @@ def admin_get_notifications(request):
             'status': notif.status
         })
     
+    print(f"✅ Returning {len(data)} notifications")
     return Response({
         'data': data,
         'success': True
