@@ -439,7 +439,7 @@ def crypto_buy(request):
     quantity = amount / price
     
     with db_transaction.atomic():
-        # Create crypto investment (using Trade model for now)
+        # Create crypto investment (using Trade model)
         crypto_investment = Trade.objects.create(
             user=request.user,
             asset=coin,
@@ -447,7 +447,6 @@ def crypto_buy(request):
             entry_price=price,
             current_price=price,
             quantity=quantity,
-            amount=amount,
             status='open'
         )
         
@@ -479,28 +478,29 @@ def crypto_buy(request):
     return Response({
         'data': {
             'investment': {
-                'id': crypto_investment.id,
+                'id': str(crypto_investment.id),
                 'type': 'crypto',
                 'coin': coin,
-                'amount': str(amount),
-                'quantity': str(quantity),
-                'price_at_purchase': str(price),
+                'amount': f"{amount:.2f}",
+                'quantity': f"{quantity:.8f}",
+                'price_at_purchase': f"{price:.2f}",
                 'status': 'active',
                 'date': crypto_investment.created_at.isoformat()
             },
             'transaction': {
-                'id': crypto_investment.id,
+                'id': str(crypto_investment.id),
                 'type': 'Crypto Purchase',
-                'amount': str(amount),
+                'amount': f"{amount:.2f}",
                 'asset': coin,
-                'quantity': str(quantity),
-                'price': str(price),
+                'quantity': f"{quantity:.8f}",
+                'price': f"{price:.2f}",
                 'status': 'completed',
                 'date': crypto_investment.created_at.isoformat()
             },
-            'new_balance': str(request.user.balance),
+            'new_balance': f"{request.user.balance:.2f}",
             'message': 'Crypto purchase successful'
-        }
+        },
+        'success': True
     }, status=status.HTTP_200_OK)
 
 
