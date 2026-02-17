@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/transactions/', include('transactions.urls')),
     path('api/referrals/', include('referrals.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/', include('settings_app.urls')),  # Platform settings
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 

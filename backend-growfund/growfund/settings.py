@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'transactions',
     'referrals',
     'notifications',
+    'settings_app',
 ]
 
 MIDDLEWARE = [
@@ -53,6 +54,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'settings_app.middleware.MaintenanceModeMiddleware',  # Maintenance mode check
 ]
 
 # Enable automatic slash appending for better URL handling
