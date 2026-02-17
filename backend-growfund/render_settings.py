@@ -2,8 +2,8 @@
 import os
 from .settings import *
 
-# Memory optimization for Render
-DEBUG = False
+# Keep DEBUG as True temporarily to see errors
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 # CORS Settings for production - Add current frontend URL
 CORS_ALLOWED_ORIGINS = [

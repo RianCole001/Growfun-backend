@@ -8,14 +8,12 @@ services:
       python manage.py collectstatic --noinput
       python manage.py migrate
     startCommand: |
-      gunicorn --config gunicorn.conf.py growfund.wsgi:application
+      python manage.py runserver 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SETTINGS_MODULE
-        value: growfund.render_settings
+        value: growfund.emergency_settings
       - key: DEBUG
-        value: "False"
+        value: "True"
       - key: PYTHONUNBUFFERED
         value: "1"
-      - key: PYTHONDONTWRITEBYTECODE
-        value: "1"
-    plan: free  # Use free tier which has memory limits
+    plan: free
