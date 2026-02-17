@@ -46,72 +46,101 @@ def admin_get_crypto_prices(request):
 @api_view(['PUT', 'POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def admin_update_crypto_price(request):
-    """Update or create crypto price (admin only) - Enhanced for EXACOIN"""
-    serializer = UpdateCryptoPriceSerializer(data=request.data)
+    """
+    Update EXACOIN price (admin only)
     
-    if not serializer.is_valid():
+    This endpoint is ONLY for EXACOIN - the admin-controlled coin.
+    All other coins (BTC, ETH, BNB, ADA, SOL, DOT) are fetched from CoinGecko API.
+    
+    Request body:
+    {
+        "coin": "EXACOIN",
+        "price": 130.00,
+        "change24h": 48.5
+    }
+    
+    Response format matches frontend requirements:
+    {
+        "data": {
+            "coin": "EXACOIN",
+            "price": 130.00,
+            "change24h": 48.50,
+            "updated_at": "2026-02-17T10:30:00Z"
+        },
+        "success": true
+    }
+    """
+    # Extract data from request
+    coin = request.data.get('coin', 'EXACOIN').upper()
+    price = request.data.get('price')
+    change24h = request.data.get('change24h', 0)
+    change7d = request.data.get('change7d', 0)
+    change30d = request.data.get('change30d', 0)
+    
+    # Validate required fields
+    if not price:
         return Response({
             'success': False,
-            'errors': serializer.errors
+            'error': 'Price is required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    data = serializer.validated_data
-    coin = data['coin'].upper()
+    # Validate price is a number
+    try:
+        price = float(price)
+        change24h = float(change24h)
+        change7d = float(change7d) if change7d else 0
+        change30d = float(change30d) if change30d else 0
+    except (ValueError, TypeError):
+        return Response({
+            'success': False,
+            'error': 'Invalid price or change values'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     with db_transaction.atomic():
-        # Get or create price record
-        price, created = AdminCryptoPrice.objects.get_or_create(
+        # Get or create EXACOIN price record
+        exacoin, created = AdminCryptoPrice.objects.get_or_create(
             coin=coin,
             defaults={
                 'name': coin,
-                'buy_price': data['buy_price'],
-                'sell_price': data['sell_price'],
-                'change_24h': data.get('change_24h', 0),
-                'change_7d': data.get('change_7d', 0),
-                'change_30d': data.get('change_30d', 0),
+                'buy_price': Decimal(str(price)),
+                'sell_price': Decimal(str(price)),  # Same as buy for EXACOIN
+                'change_24h': Decimal(str(change24h)),
+                'change_7d': Decimal(str(change7d)),
+                'change_30d': Decimal(str(change30d)),
+                'is_active': True,
                 'updated_by': request.user
             }
         )
         
         if not created:
-            # Update existing price
-            price.buy_price = data['buy_price']
-            price.sell_price = data['sell_price']
-            price.change_24h = data.get('change_24h', price.change_24h)
-            price.change_7d = data.get('change_7d', price.change_7d)
-            price.change_30d = data.get('change_30d', price.change_30d)
-            price.updated_by = request.user
-            price.save()
+            # Update existing EXACOIN price
+            exacoin.buy_price = Decimal(str(price))
+            exacoin.sell_price = Decimal(str(price))
+            exacoin.change_24h = Decimal(str(change24h))
+            exacoin.change_7d = Decimal(str(change7d))
+            exacoin.change_30d = Decimal(str(change30d))
+            exacoin.is_active = True
+            exacoin.updated_by = request.user
+            exacoin.save()
         
         # Log price change to history
         CryptoPriceHistory.objects.create(
             coin=coin,
-            buy_price=price.buy_price,
-            sell_price=price.sell_price,
-            change_24h=price.change_24h,
+            buy_price=exacoin.buy_price,
+            sell_price=exacoin.sell_price,
+            change_24h=exacoin.change_24h,
             updated_by=request.user
         )
-        
-        # Create notification for admin
-        try:
-            from notifications.models import Notification
-            action = "created" if created else "updated"
-            Notification.create_notification(
-                user=request.user,
-                title=f"Crypto Price {action.title()}",
-                message=f"{coin} price {action}: Buy ${price.buy_price}, Sell ${price.sell_price} (Spread: {price.spread_percentage:.2f}%)",
-                notification_type='info'
-            )
-        except Exception as e:
-            print(f"Warning: Could not create notification: {e}")
     
-    # Return in frontend format
+    # Return in exact frontend format
     return Response({
         'data': {
-            'coin': price.coin,
-            'price': float(f"{price.buy_price:.2f}"),  # Format with 2 decimals
-            'change24h': float(f"{price.change_24h:.2f}"),  # Format with decimals
-            'updated_at': price.last_updated.isoformat()
+            'coin': exacoin.coin,
+            'price': float(f"{exacoin.buy_price:.2f}"),
+            'change24h': float(f"{exacoin.change_24h:.2f}"),
+            'change7d': float(f"{exacoin.change_7d:.2f}"),
+            'change30d': float(f"{exacoin.change_30d:.2f}"),
+            'updated_at': exacoin.last_updated.isoformat()
         },
         'success': True
     }, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)

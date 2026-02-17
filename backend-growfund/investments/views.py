@@ -642,10 +642,15 @@ def crypto_sell(request):
 
 
 @api_view(['GET'])
+@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def crypto_prices(request):
     """
-    Get crypto prices - EXACOIN from admin, others from CoinGecko API
+    Get crypto prices - EXACOIN from admin DB, all others from CoinGecko API
+    
+    EXACOIN: Admin-controlled (stored in database)
+    BTC, ETH, BNB, ADA, SOL, DOT: Real-time from CoinGecko API
+    
     All prices formatted with 2 decimals, all percentages with decimals
     """
     from .admin_models import AdminCryptoPrice
@@ -653,17 +658,17 @@ def crypto_prices(request):
     
     prices = {}
     
-    # Get EXACOIN from admin-controlled prices
+    # 1. Get EXACOIN from admin-controlled database (ONLY coin admin controls)
     try:
         exacoin = AdminCryptoPrice.objects.get(coin='EXACOIN', is_active=True)
         prices['EXACOIN'] = {
-            'price': float(f"{exacoin.buy_price:.2f}"),  # Format with 2 decimals
-            'change24h': float(f"{exacoin.change_24h:.2f}"),  # Format with decimals
+            'price': float(f"{exacoin.buy_price:.2f}"),
+            'change24h': float(f"{exacoin.change_24h:.2f}"),
             'change7d': float(f"{exacoin.change_7d:.2f}"),
             'change30d': float(f"{exacoin.change_30d:.2f}")
         }
     except AdminCryptoPrice.DoesNotExist:
-        # Fallback if not set
+        # Default EXACOIN if not set by admin yet
         prices['EXACOIN'] = {
             'price': 125.50,
             'change24h': 45.20,
@@ -671,9 +676,8 @@ def crypto_prices(request):
             'change30d': 89.50
         }
     
-    # Try to fetch from CoinGecko API for other coins
+    # 2. Fetch ALL other coins from CoinGecko API (real-time market prices)
     try:
-        # CoinGecko API - free tier
         coingecko_url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
             'ids': 'bitcoin,ethereum,binancecoin,cardano,solana,polkadot',
@@ -683,7 +687,7 @@ def crypto_prices(request):
             'include_30d_change': 'true'
         }
         
-        response = requests.get(coingecko_url, params=params, timeout=5)
+        response = requests.get(coingecko_url, params=params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
@@ -702,30 +706,20 @@ def crypto_prices(request):
                 if gecko_id in data:
                     coin_data = data[gecko_id]
                     prices[symbol] = {
-                        'price': float(f"{coin_data.get('usd', 0):.2f}"),  # Always 2 decimals
-                        'change24h': float(f"{coin_data.get('usd_24h_change', 0):.2f}"),  # With decimals
+                        'price': float(f"{coin_data.get('usd', 0):.2f}"),
+                        'change24h': float(f"{coin_data.get('usd_24h_change', 0):.2f}"),
                         'change7d': float(f"{coin_data.get('usd_7d_change', 0):.2f}"),
                         'change30d': float(f"{coin_data.get('usd_30d_change', 0):.2f}")
                     }
         else:
-            # Fallback to admin prices or mock data
+            print(f"CoinGecko API returned status {response.status_code}")
             raise Exception("CoinGecko API failed")
             
     except Exception as e:
-        print(f"CoinGecko API error: {e}, using fallback prices")
+        print(f"⚠️ CoinGecko API error: {e}")
+        print("📊 Using fallback prices for other coins")
         
-        # Check admin prices for other coins
-        admin_prices = AdminCryptoPrice.objects.filter(is_active=True).exclude(coin='EXACOIN')
-        
-        for price in admin_prices:
-            prices[price.coin] = {
-                'price': float(f"{price.buy_price:.2f}"),
-                'change24h': float(f"{price.change_24h:.2f}"),
-                'change7d': float(f"{price.change_7d:.2f}"),
-                'change30d': float(f"{price.change_30d:.2f}")
-            }
-        
-        # Add fallback for coins not in admin
+        # Fallback: Use static prices if API fails (only as backup)
         fallback_prices = {
             'BTC': {'price': 64444.00, 'change24h': 2.10, 'change7d': -1.50, 'change30d': 8.70},
             'ETH': {'price': 3200.00, 'change24h': 1.80, 'change7d': 3.20, 'change30d': 15.40},
