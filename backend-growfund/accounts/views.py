@@ -394,17 +394,22 @@ class UserBalanceView(APIView):
 
 
 class AdminUsersListView(generics.ListAPIView):
-    """List all users (admin only)"""
+    """List all users (admin only) - Memory optimized"""
     
-    queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None  # Use default pagination
     
     def get_queryset(self):
         # Check if user is admin or superuser
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             return User.objects.none()
-        return User.objects.all().order_by('-date_joined')
+        
+        # Optimize query to reduce memory usage
+        return User.objects.select_related().only(
+            'id', 'email', 'first_name', 'last_name', 'is_active', 
+            'is_verified', 'balance', 'date_joined'
+        ).order_by('-date_joined')[:100]  # Limit to 100 users
     
     def list(self, request, *args, **kwargs):
         # Check if user is admin or superuser
@@ -797,16 +802,20 @@ def dashboard_stats(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_suspended_users(request):
-    """Get list of suspended users (admin only)"""
+    """Get list of suspended users (admin only) - Memory optimized"""
     if not (request.user.is_staff or request.user.is_superuser):
         return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
     
-    suspended_users = User.objects.filter(is_active=False).order_by('-date_joined')
+    # Optimize query to reduce memory usage
+    suspended_users = User.objects.filter(is_active=False).only(
+        'id', 'email', 'first_name', 'last_name', 'date_joined'
+    ).order_by('-date_joined')[:50]  # Limit to 50 users
+    
     serializer = UserSerializer(suspended_users, many=True)
     
     return Response({
         'data': serializer.data,
-        'count': suspended_users.count()
+        'count': len(serializer.data)  # Count from serialized data instead of separate query
     }, status=status.HTTP_200_OK)
 
 

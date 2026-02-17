@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: growfund-backend
+    env: python
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
+    startCommand: |
+      gunicorn --config gunicorn.conf.py growfund.wsgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: growfund.render_settings
+      - key: DEBUG
+        value: "False"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+    plan: free  # Use free tier which has memory limits
