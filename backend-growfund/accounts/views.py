@@ -416,17 +416,48 @@ class AdminUsersListView(generics.ListAPIView):
         # Optimize query to reduce memory usage
         return User.objects.select_related().only(
             'id', 'email', 'first_name', 'last_name', 'is_active', 
-            'is_verified', 'balance', 'date_joined'
+            'is_verified', 'is_staff', 'is_superuser', 'balance', 'date_joined', 'last_login'
         ).order_by('-date_joined')[:100]  # Limit to 100 users
     
     def list(self, request, *args, **kwargs):
         # Check if user is admin or superuser
         if not (request.user.is_staff or request.user.is_superuser):
             return Response({
-                'error': 'Admin access required'
+                'error': 'Admin access required',
+                'success': False
             }, status=status.HTTP_403_FORBIDDEN)
         
-        return super().list(request, *args, **kwargs)
+        queryset = self.get_queryset()
+        
+        # Calculate invested amount for each user
+        from investments.models import Trade
+        from django.db.models import Sum
+        
+        data = []
+        for user in queryset:
+            # Calculate total invested
+            invested = Trade.objects.filter(user=user, status='open').aggregate(
+                total=Sum('amount')
+            )['total'] or 0
+            
+            data.append({
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name or '',
+                'last_name': user.last_name or '',
+                'is_verified': user.is_verified,
+                'is_staff': user.is_staff,
+                'is_superuser': user.is_superuser,
+                'balance': str(user.balance),
+                'invested': str(invested),
+                'date_joined': user.date_joined.isoformat(),
+                'last_login_at': user.last_login.isoformat() if user.last_login else None
+            })
+        
+        return Response({
+            'data': data,
+            'success': True
+        }, status=status.HTTP_200_OK)
 
 
 class AdminUserDetailView(APIView):
@@ -761,8 +792,9 @@ def generate_referral_code(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
-    """Get dashboard statistics for user"""
+    """Get comprehensive dashboard statistics for user including crypto portfolio"""
     user = request.user
+    from decimal import Decimal
     
     # Investment stats
     from investments.models import CapitalInvestmentPlan, Trade
@@ -770,6 +802,21 @@ def dashboard_stats(request):
     total_invested = CapitalInvestmentPlan.objects.filter(user=user).aggregate(
         total=models.Sum('initial_amount')
     )['total'] or 0
+    
+    # Crypto portfolio stats
+    crypto_investments = Trade.objects.filter(user=user, status='open')
+    crypto_total_value = Decimal('0')
+    crypto_total_invested = Decimal('0')
+    crypto_count = 0
+    
+    for investment in crypto_investments:
+        current_value = investment.quantity * investment.current_price
+        crypto_total_value += current_value
+        crypto_total_invested += investment.amount
+        crypto_count += 1
+    
+    crypto_profit_loss = crypto_total_value - crypto_total_invested
+    crypto_profit_loss_percentage = (crypto_profit_loss / crypto_total_invested * 100) if crypto_total_invested > 0 else 0
     
     # Trading stats
     open_trades = Trade.objects.filter(user=user, status='open').count()
@@ -791,12 +838,35 @@ def dashboard_stats(request):
         referrer=user, reward_claimed=True
     ).aggregate(total=models.Sum('reward_amount'))['total'] or 0
     
+    # Notification stats
+    from notifications.models import Notification
+    unread_notifications = Notification.objects.filter(user=user, read=False).count()
+    
+    # Recent activity (last 5 transactions)
+    recent_transactions = Transaction.objects.filter(user=user).order_by('-created_at')[:5]
+    recent_activity = []
+    for txn in recent_transactions:
+        recent_activity.append({
+            'id': txn.id,
+            'type': txn.transaction_type,
+            'amount': str(txn.amount),
+            'status': txn.status,
+            'date': txn.created_at.isoformat()
+        })
+    
     return Response({
         'data': {
             'balance': str(user.balance),
             'investments': {
                 'active_count': active_investments,
                 'total_invested': str(total_invested)
+            },
+            'crypto': {
+                'total_value': str(crypto_total_value),
+                'total_invested': str(crypto_total_invested),
+                'profit_loss': str(crypto_profit_loss),
+                'profit_loss_percentage': float(crypto_profit_loss_percentage),
+                'holdings_count': crypto_count
             },
             'trading': {
                 'open_trades': open_trades,
@@ -809,7 +879,11 @@ def dashboard_stats(request):
             'referrals': {
                 'total_count': total_referrals,
                 'total_earnings': str(referral_earnings)
-            }
+            },
+            'notifications': {
+                'unread_count': unread_notifications
+            },
+            'recent_activity': recent_activity
         }
     }, status=status.HTTP_200_OK)
 

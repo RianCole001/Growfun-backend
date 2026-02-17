@@ -157,3 +157,82 @@ def create_welcome_notifications(request):
         'message': f'Created {len(created_notifications)} welcome notifications',
         'data': serializer.data
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def admin_send_notification(request):
+    """Send notification to specific user or all users (admin only)"""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'success': False,
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    from .models import Notification
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    title = request.data.get('title')
+    message = request.data.get('message')
+    notification_type = request.data.get('type', 'info')
+    user_id = request.data.get('user_id')  # Optional: specific user
+    send_to_all = request.data.get('send_to_all', False)
+    
+    if not title or not message:
+        return Response({
+            'success': False,
+            'error': 'Title and message are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    created_notifications = []
+    
+    if send_to_all:
+        # Send to all active users
+        users = User.objects.filter(is_active=True)
+        for user in users:
+            notification = Notification.create_notification(
+                user=user,
+                title=title,
+                message=message,
+                notification_type=notification_type
+            )
+            created_notifications.append(notification)
+        
+        return Response({
+            'success': True,
+            'message': f'Notification sent to {len(created_notifications)} users',
+            'data': {
+                'count': len(created_notifications)
+            }
+        }, status=status.HTTP_201_CREATED)
+    
+    elif user_id:
+        # Send to specific user
+        try:
+            user = User.objects.get(id=user_id)
+            notification = Notification.create_notification(
+                user=user,
+                title=title,
+                message=message,
+                notification_type=notification_type
+            )
+            
+            serializer = NotificationSerializer(notification)
+            return Response({
+                'success': True,
+                'message': f'Notification sent to {user.email}',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    else:
+        return Response({
+            'success': False,
+            'error': 'Either user_id or send_to_all must be specified'
+        }, status=status.HTTP_400_BAD_REQUEST)

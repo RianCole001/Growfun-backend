@@ -13,6 +13,10 @@ urlpatterns = [
     path('api/investments/', include('investments.urls')),
     path('api/crypto/', include('investments.urls')),  # Alias for crypto endpoints
     path('api/transactions/', include('transactions.urls')),
+    path('api/admin/deposits/', include('transactions.urls')),  # Admin deposits
+    path('api/admin/withdrawals/', include('transactions.urls')),  # Admin withdrawals
+    path('api/admin/investments/', include('transactions.urls')),  # Admin investments
+    path('api/admin/transactions/', include('transactions.urls')),  # Admin transactions
     path('api/referrals/', include('referrals.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/', include('settings_app.urls')),  # Platform settings
