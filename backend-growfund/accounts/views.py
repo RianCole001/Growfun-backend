@@ -435,10 +435,9 @@ class AdminUsersListView(generics.ListAPIView):
         
         data = []
         for user in queryset:
-            # Calculate total invested
-            invested = Trade.objects.filter(user=user, status='open').aggregate(
-                total=Sum('amount')
-            )['total'] or 0
+            # Calculate total invested (entry_price * quantity for all open trades)
+            open_trades = Trade.objects.filter(user=user, status='open').only('entry_price', 'quantity')
+            invested = sum(float(trade.entry_price) * float(trade.quantity) for trade in open_trades)
             
             data.append({
                 'id': user.id,
@@ -449,7 +448,7 @@ class AdminUsersListView(generics.ListAPIView):
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
                 'balance': str(user.balance),
-                'invested': str(invested),
+                'invested': f"{invested:.2f}",
                 'date_joined': user.date_joined.isoformat(),
                 'last_login_at': user.last_login.isoformat() if user.last_login else None
             })
