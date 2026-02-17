@@ -46,7 +46,7 @@ def admin_get_crypto_prices(request):
 @api_view(['PUT', 'POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def admin_update_crypto_price(request):
-    """Update or create crypto price (admin only)"""
+    """Update or create crypto price (admin only) - Enhanced for EXACOIN"""
     serializer = UpdateCryptoPriceSerializer(data=request.data)
     
     if not serializer.is_valid():
@@ -105,18 +105,15 @@ def admin_update_crypto_price(request):
         except Exception as e:
             print(f"Warning: Could not create notification: {e}")
     
+    # Return in frontend format
     return Response({
-        'success': True,
-        'message': f'Price for {coin} {"created" if created else "updated"} successfully',
         'data': {
             'coin': price.coin,
-            'buy_price': str(price.buy_price),
-            'sell_price': str(price.sell_price),
-            'spread': str(price.spread),
-            'spread_percentage': float(price.spread_percentage),
-            'change_24h': float(price.change_24h),
-            'last_updated': price.last_updated.isoformat()
-        }
+            'price': float(f"{price.buy_price:.2f}"),  # Format with 2 decimals
+            'change24h': float(f"{price.change_24h:.2f}"),  # Format with decimals
+            'updated_at': price.last_updated.isoformat()
+        },
+        'success': True
     }, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
 
 

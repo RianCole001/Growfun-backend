@@ -647,54 +647,103 @@ def crypto_sell(request):
 @permission_classes([IsAuthenticated])
 def crypto_prices(request):
     """
-    Get crypto prices - uses admin-controlled prices if available, otherwise mock data
+    Get crypto prices - EXACOIN from admin, others from CoinGecko API
+    All prices formatted with 2 decimals, all percentages with decimals
     """
     from .admin_models import AdminCryptoPrice
+    import requests
     
-    # Try to get admin-controlled prices
-    admin_prices = AdminCryptoPrice.objects.filter(is_active=True)
+    prices = {}
     
-    if admin_prices.exists():
-        # Use admin-controlled prices
-        prices = {}
-        for price in admin_prices:
-            prices[price.coin] = {
-                'price': float(price.buy_price),  # Users see buy price
-                'change24h': float(price.change_24h),
-                'change7d': float(price.change_7d),
-                'change30d': float(price.change_30d)
-            }
-    else:
-        # Fallback to mock prices if no admin prices set
-        prices = {
-            'BTC': {
-                'price': 65000.00,
-                'change24h': 2.1,
-                'change7d': -1.5,
-                'change30d': 8.7
-            },
-            'ETH': {
-                'price': 3200.00,
-                'change24h': 1.8,
-                'change7d': 3.2,
-                'change30d': 15.4
-            },
-            'EXACOIN': {
-                'price': 60.00,
-                'change24h': 45.2,
-                'change7d': 12.8,
-                'change30d': 89.5
-            },
-            'USDT': {
-                'price': 1.00,
-                'change24h': 0.0,
-                'change7d': 0.0,
-                'change30d': 0.0
-            }
+    # Get EXACOIN from admin-controlled prices
+    try:
+        exacoin = AdminCryptoPrice.objects.get(coin='EXACOIN', is_active=True)
+        prices['EXACOIN'] = {
+            'price': float(f"{exacoin.buy_price:.2f}"),  # Format with 2 decimals
+            'change24h': float(f"{exacoin.change_24h:.2f}"),  # Format with decimals
+            'change7d': float(f"{exacoin.change_7d:.2f}"),
+            'change30d': float(f"{exacoin.change_30d:.2f}")
+        }
+    except AdminCryptoPrice.DoesNotExist:
+        # Fallback if not set
+        prices['EXACOIN'] = {
+            'price': 125.50,
+            'change24h': 45.20,
+            'change7d': 12.80,
+            'change30d': 89.50
         }
     
+    # Try to fetch from CoinGecko API for other coins
+    try:
+        # CoinGecko API - free tier
+        coingecko_url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            'ids': 'bitcoin,ethereum,binancecoin,cardano,solana,polkadot',
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true',
+            'include_7d_change': 'true',
+            'include_30d_change': 'true'
+        }
+        
+        response = requests.get(coingecko_url, params=params, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Map CoinGecko IDs to our symbols
+            coin_mapping = {
+                'bitcoin': 'BTC',
+                'ethereum': 'ETH',
+                'binancecoin': 'BNB',
+                'cardano': 'ADA',
+                'solana': 'SOL',
+                'polkadot': 'DOT'
+            }
+            
+            for gecko_id, symbol in coin_mapping.items():
+                if gecko_id in data:
+                    coin_data = data[gecko_id]
+                    prices[symbol] = {
+                        'price': float(f"{coin_data.get('usd', 0):.2f}"),  # Always 2 decimals
+                        'change24h': float(f"{coin_data.get('usd_24h_change', 0):.2f}"),  # With decimals
+                        'change7d': float(f"{coin_data.get('usd_7d_change', 0):.2f}"),
+                        'change30d': float(f"{coin_data.get('usd_30d_change', 0):.2f}")
+                    }
+        else:
+            # Fallback to admin prices or mock data
+            raise Exception("CoinGecko API failed")
+            
+    except Exception as e:
+        print(f"CoinGecko API error: {e}, using fallback prices")
+        
+        # Check admin prices for other coins
+        admin_prices = AdminCryptoPrice.objects.filter(is_active=True).exclude(coin='EXACOIN')
+        
+        for price in admin_prices:
+            prices[price.coin] = {
+                'price': float(f"{price.buy_price:.2f}"),
+                'change24h': float(f"{price.change_24h:.2f}"),
+                'change7d': float(f"{price.change_7d:.2f}"),
+                'change30d': float(f"{price.change_30d:.2f}")
+            }
+        
+        # Add fallback for coins not in admin
+        fallback_prices = {
+            'BTC': {'price': 64444.00, 'change24h': 2.10, 'change7d': -1.50, 'change30d': 8.70},
+            'ETH': {'price': 3200.00, 'change24h': 1.80, 'change7d': 3.20, 'change30d': 15.40},
+            'BNB': {'price': 420.00, 'change24h': 0.50, 'change7d': 2.10, 'change30d': 10.20},
+            'ADA': {'price': 1.25, 'change24h': -0.80, 'change7d': 1.50, 'change30d': 5.30},
+            'SOL': {'price': 120.00, 'change24h': 3.20, 'change7d': 5.80, 'change30d': 20.10},
+            'DOT': {'price': 6.40, 'change24h': -1.20, 'change7d': 0.50, 'change30d': 3.80}
+        }
+        
+        for symbol, data in fallback_prices.items():
+            if symbol not in prices:
+                prices[symbol] = data
+    
     return Response({
-        'data': prices
+        'data': prices,
+        'success': True
     }, status=status.HTTP_200_OK)
 
 

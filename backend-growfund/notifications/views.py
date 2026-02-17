@@ -3,8 +3,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.core.paginator import Paginator
-from .models import Notification
+from django.contrib.auth import get_user_model
+from .models import Notification, AdminNotification
 from .serializers import NotificationSerializer
+
+User = get_user_model()
 
 
 @api_view(['GET'])
@@ -19,6 +22,9 @@ def notification_list(request):
         read_bool = read_status.lower() == 'true'
         notifications = notifications.filter(read=read_bool)
     
+    # Get unread count
+    unread_count = Notification.objects.filter(user=request.user, read=False).count()
+    
     # Pagination
     page_size = int(request.query_params.get('page_size', 20))
     page = int(request.query_params.get('page', 1))
@@ -31,6 +37,7 @@ def notification_list(request):
     # Return in the format expected by frontend
     return Response({
         'data': serializer.data,
+        'unread_count': unread_count,
         'pagination': {
             'current_page': page,
             'total_pages': paginator.num_pages,
@@ -110,12 +117,11 @@ def notification_stats(request):
         }
     }, status=status.HTTP_200_OK)
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_welcome_notifications(request):
     """Create welcome notifications for new users (for testing)"""
-    from .models import Notification
-    
     # Create welcome notifications
     notifications_data = [
         {
@@ -159,25 +165,24 @@ def create_welcome_notifications(request):
     }, status=status.HTTP_201_CREATED)
 
 
+# ============= ADMIN NOTIFICATION ENDPOINTS =============
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def admin_send_notification(request):
-    """Send notification to specific user or all users (admin only)"""
+    """Send notification with target filtering (admin only)"""
     if not (request.user.is_staff or request.user.is_superuser):
         return Response({
             'success': False,
             'error': 'Admin access required'
         }, status=status.HTTP_403_FORBIDDEN)
     
-    from .models import Notification
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-    
     title = request.data.get('title')
     message = request.data.get('message')
     notification_type = request.data.get('type', 'info')
-    user_id = request.data.get('user_id')  # Optional: specific user
-    send_to_all = request.data.get('send_to_all', False)
+    priority = request.data.get('priority', 'normal')
+    target = request.data.get('target', 'all')
+    target_users = request.data.get('target_users', '')
     
     if not title or not message:
         return Response({
@@ -185,54 +190,120 @@ def admin_send_notification(request):
             'error': 'Title and message are required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    created_notifications = []
+    # Determine target users
+    users_to_notify = []
     
-    if send_to_all:
-        # Send to all active users
-        users = User.objects.filter(is_active=True)
-        for user in users:
-            notification = Notification.create_notification(
-                user=user,
-                title=title,
-                message=message,
-                notification_type=notification_type
-            )
-            created_notifications.append(notification)
-        
-        return Response({
-            'success': True,
-            'message': f'Notification sent to {len(created_notifications)} users',
-            'data': {
-                'count': len(created_notifications)
-            }
-        }, status=status.HTTP_201_CREATED)
-    
-    elif user_id:
-        # Send to specific user
-        try:
-            user = User.objects.get(id=user_id)
-            notification = Notification.create_notification(
-                user=user,
-                title=title,
-                message=message,
-                notification_type=notification_type
-            )
-            
-            serializer = NotificationSerializer(notification)
-            return Response({
-                'success': True,
-                'message': f'Notification sent to {user.email}',
-                'data': serializer.data
-            }, status=status.HTTP_201_CREATED)
-        
-        except User.DoesNotExist:
+    if target == 'all':
+        users_to_notify = User.objects.filter(is_active=True)
+    elif target == 'verified_users':
+        users_to_notify = User.objects.filter(is_active=True, is_verified=True)
+    elif target == 'specific_users':
+        if not target_users:
             return Response({
                 'success': False,
-                'error': 'User not found'
-            }, status=status.HTTP_404_NOT_FOUND)
+                'error': 'target_users is required when target=specific_users'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Parse comma-separated emails
+        emails = [email.strip() for email in target_users.split(',')]
+        users_to_notify = User.objects.filter(email__in=emails, is_active=True)
     
-    else:
+    # Create admin notification record
+    admin_notification = AdminNotification.objects.create(
+        title=title,
+        message=message,
+        type=notification_type,
+        priority=priority,
+        target=target,
+        target_users=target_users,
+        created_by=request.user,
+        status='sent'
+    )
+    
+    # Send to each user
+    sent_count = 0
+    for user in users_to_notify:
+        Notification.create_notification(
+            user=user,
+            title=title,
+            message=message,
+            notification_type=notification_type
+        )
+        sent_count += 1
+    
+    # Update sent count
+    admin_notification.sent_count = sent_count
+    admin_notification.save()
+    
+    return Response({
+        'data': {
+            'id': admin_notification.id,
+            'title': admin_notification.title,
+            'message': admin_notification.message,
+            'type': admin_notification.type,
+            'priority': admin_notification.priority,
+            'target': admin_notification.target,
+            'sent_count': admin_notification.sent_count,
+            'created_at': admin_notification.created_at.isoformat(),
+            'status': admin_notification.status
+        },
+        'success': True
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_get_notifications(request):
+    """Get all admin-created notifications (admin only)"""
+    if not (request.user.is_staff or request.user.is_superuser):
         return Response({
             'success': False,
-            'error': 'Either user_id or send_to_all must be specified'
-        }, status=status.HTTP_400_BAD_REQUEST)
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    notifications = AdminNotification.objects.all()
+    
+    data = []
+    for notif in notifications:
+        data.append({
+            'id': notif.id,
+            'title': notif.title,
+            'message': notif.message,
+            'type': notif.type,
+            'priority': notif.priority,
+            'target': notif.target,
+            'sent_count': notif.sent_count,
+            'created_at': notif.created_at.isoformat(),
+            'status': notif.status
+        })
+    
+    return Response({
+        'data': data,
+        'success': True
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def admin_delete_notification(request, notification_id):
+    """Delete an admin notification (admin only)"""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({
+            'success': False,
+            'error': 'Admin access required'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        notification = AdminNotification.objects.get(id=notification_id)
+        notification.delete()
+        
+        return Response({
+            'data': {'message': 'Notification deleted'},
+            'success': True
+        }, status=status.HTTP_200_OK)
+    
+    except AdminNotification.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': 'Notification not found'
+        }, status=status.HTTP_404_NOT_FOUND)
