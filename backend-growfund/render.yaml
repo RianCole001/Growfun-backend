@@ -2,14 +2,11 @@ services:
   - type: web
     name: growfund-backend
     env: python
-    buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
-      python manage.py collectstatic --noinput --settings=growfund.minimal_settings
-      python manage.py migrate --settings=growfund.minimal_settings
-    startCommand: |
-      python manage.py runserver 0.0.0.0:$PORT --settings=growfund.minimal_settings
+    buildCommand: bash build.sh
+    startCommand: gunicorn growfund.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: DJANGO_SETTINGS_MODULE
+        value: growfund.settings
     plan: free
