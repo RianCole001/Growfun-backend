@@ -5,6 +5,28 @@ from .settings import *
 # Memory optimization for Render
 DEBUG = False
 
+# CORS Settings for production - Add current frontend URL
+CORS_ALLOWED_ORIGINS = [
+    'https://growfund-dashboard.onrender.com',  # Original frontend URL
+    'https://dashboard-yfb8.onrender.com',      # Current frontend URL
+    'http://localhost:3000',  # Local development
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF Trusted Origins
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'https://growfun-backend.onrender.com',
+    'https://growfund-dashboard.onrender.com',  # Original frontend
+    'https://dashboard-yfb8.onrender.com',      # Current frontend
+]
+
 # Reduce memory usage
 DATABASES['default']['CONN_MAX_AGE'] = 0  # Don't keep connections alive
 DATABASES['default']['OPTIONS'] = {
