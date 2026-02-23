@@ -19,7 +19,8 @@ urlpatterns = [
     path('api/admin/transactions/', include('transactions.urls')),  # Admin transactions
     path('api/referrals/', include('referrals.urls')),
     path('api/notifications/', include('notifications.urls')),
-    path('api/', include('settings_app.urls')),  # Platform settings
+    path('api/demo/', include('demo.urls')),  # Demo trading system
+    path('api/settings/', include('settings_app.urls')),  # Platform settings
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 

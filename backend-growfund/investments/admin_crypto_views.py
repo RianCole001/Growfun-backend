@@ -16,11 +16,15 @@ from .serializers import (
 @permission_classes([IsAuthenticated, IsAdminUser])
 def admin_get_crypto_prices(request):
     """Get all crypto prices for admin management"""
-    prices = AdminCryptoPrice.objects.all()
+    from decimal import Decimal
+    import requests
     
-    # Format as dictionary with coin as key
+    # Get all admin-controlled prices from database
+    admin_prices = AdminCryptoPrice.objects.all()
     prices_dict = {}
-    for price in prices:
+    
+    # Add existing admin prices to dict
+    for price in admin_prices:
         prices_dict[price.coin] = {
             'id': price.id,
             'coin': price.coin,
@@ -34,8 +38,93 @@ def admin_get_crypto_prices(request):
             'change_30d': float(price.change_30d),
             'is_active': price.is_active,
             'last_updated': price.last_updated.isoformat(),
-            'updated_by': price.updated_by.email if price.updated_by else None
+            'updated_by': price.updated_by.email if price.updated_by else None,
+            'is_admin_controlled': True
         }
+    
+    # Fetch other coins from CoinGecko API and create/update them
+    try:
+        coingecko_url = "https://api.coingecko.com/api/v3/simple/price"
+        params = {
+            'ids': 'bitcoin,ethereum,binancecoin,cardano,solana,polkadot',
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true',
+            'include_7d_change': 'true',
+            'include_30d_change': 'true'
+        }
+        
+        response = requests.get(coingecko_url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Map CoinGecko IDs to our symbols
+            coin_mapping = {
+                'bitcoin': {'symbol': 'BTC', 'name': 'Bitcoin'},
+                'ethereum': {'symbol': 'ETH', 'name': 'Ethereum'},
+                'binancecoin': {'symbol': 'BNB', 'name': 'Binance Coin'},
+                'cardano': {'symbol': 'ADA', 'name': 'Cardano'},
+                'solana': {'symbol': 'SOL', 'name': 'Solana'},
+                'polkadot': {'symbol': 'DOT', 'name': 'Polkadot'}
+            }
+            
+            for gecko_id, coin_info in coin_mapping.items():
+                if gecko_id in data:
+                    coin_data = data[gecko_id]
+                    symbol = coin_info['symbol']
+                    name = coin_info['name']
+                    
+                    # Get current market price as buy price
+                    buy_price = Decimal(str(coin_data.get('usd', 0)))
+                    
+                    # Calculate sell price (3% lower than buy price for spread)
+                    sell_price = buy_price * Decimal('0.97')
+                    
+                    # Get or create the coin price record
+                    admin_price, created = AdminCryptoPrice.objects.get_or_create(
+                        coin=symbol,
+                        defaults={
+                            'name': name,
+                            'buy_price': buy_price,
+                            'sell_price': sell_price,
+                            'change_24h': Decimal(str(coin_data.get('usd_24h_change', 0))),
+                            'change_7d': Decimal(str(coin_data.get('usd_7d_change', 0))),
+                            'change_30d': Decimal(str(coin_data.get('usd_30d_change', 0))),
+                            'is_active': True,
+                            'updated_by': request.user
+                        }
+                    )
+                    
+                    # If not created, update buy price from API but keep admin-set sell price
+                    if not created:
+                        admin_price.buy_price = buy_price
+                        admin_price.change_24h = Decimal(str(coin_data.get('usd_24h_change', 0)))
+                        admin_price.change_7d = Decimal(str(coin_data.get('usd_7d_change', 0)))
+                        admin_price.change_30d = Decimal(str(coin_data.get('usd_30d_change', 0)))
+                        admin_price.updated_by = request.user
+                        admin_price.save()
+                    
+                    # Add to response dict
+                    prices_dict[symbol] = {
+                        'id': admin_price.id,
+                        'coin': admin_price.coin,
+                        'name': admin_price.name,
+                        'buy_price': str(admin_price.buy_price),
+                        'sell_price': str(admin_price.sell_price),
+                        'spread': str(admin_price.spread),
+                        'spread_percentage': float(admin_price.spread_percentage),
+                        'change_24h': float(admin_price.change_24h),
+                        'change_7d': float(admin_price.change_7d),
+                        'change_30d': float(admin_price.change_30d),
+                        'is_active': admin_price.is_active,
+                        'last_updated': admin_price.last_updated.isoformat(),
+                        'updated_by': admin_price.updated_by.email if admin_price.updated_by else None,
+                        'is_admin_controlled': symbol == 'EXACOIN'  # Only EXACOIN is fully admin controlled
+                    }
+    
+    except Exception as e:
+        print(f"⚠️ CoinGecko API error: {e}")
+        # Continue with existing data if API fails
     
     return Response({
         'success': True,
@@ -47,46 +136,52 @@ def admin_get_crypto_prices(request):
 @permission_classes([IsAuthenticated, IsAdminUser])
 def admin_update_crypto_price(request):
     """
-    Update EXACOIN price (admin only)
+    Update crypto price (admin only)
     
-    This endpoint is ONLY for EXACOIN - the admin-controlled coin.
-    All other coins (BTC, ETH, BNB, ADA, SOL, DOT) are fetched from CoinGecko API.
+    For EXACOIN: Admin can set both buy and sell prices
+    For other coins: Admin can only set sell price, buy price comes from API
     
     Request body:
     {
-        "coin": "EXACOIN",
-        "price": 130.00,
-        "change24h": 48.5
-    }
-    
-    Response format matches frontend requirements:
-    {
-        "data": {
-            "coin": "EXACOIN",
-            "price": 130.00,
-            "change24h": 48.50,
-            "updated_at": "2026-02-17T10:30:00Z"
-        },
-        "success": true
+        "coin": "BTC",
+        "buy_price": 65000.00,  // Optional for non-EXACOIN coins
+        "sell_price": 63000.00,  // Required
+        "change24h": 2.5  // Optional
     }
     """
     # Extract data from request
-    coin = request.data.get('coin', 'EXACOIN').upper()
-    price = request.data.get('price')
+    coin = request.data.get('coin', '').upper()
+    buy_price = request.data.get('buy_price')
+    sell_price = request.data.get('sell_price')
     change24h = request.data.get('change24h', 0)
     change7d = request.data.get('change7d', 0)
     change30d = request.data.get('change30d', 0)
     
     # Validate required fields
-    if not price:
+    if not coin:
         return Response({
             'success': False,
-            'error': 'Price is required'
+            'error': 'Coin is required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate price is a number
+    if not sell_price:
+        return Response({
+            'success': False,
+            'error': 'Sell price is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # For EXACOIN, buy_price is required. For others, it's optional (comes from API)
+    if coin == 'EXACOIN' and not buy_price:
+        return Response({
+            'success': False,
+            'error': 'Buy price is required for EXACOIN'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate price values
     try:
-        price = float(price)
+        if buy_price:
+            buy_price = float(buy_price)
+        sell_price = float(sell_price)
         change24h = float(change24h)
         change7d = float(change7d) if change7d else 0
         change30d = float(change30d) if change30d else 0
@@ -97,53 +192,68 @@ def admin_update_crypto_price(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     with db_transaction.atomic():
-        # Get or create EXACOIN price record
-        exacoin, created = AdminCryptoPrice.objects.get_or_create(
-            coin=coin,
-            defaults={
-                'name': coin,
-                'buy_price': Decimal(str(price)),
-                'sell_price': Decimal(str(price)),  # Same as buy for EXACOIN
-                'change_24h': Decimal(str(change24h)),
-                'change_7d': Decimal(str(change7d)),
-                'change_30d': Decimal(str(change30d)),
-                'is_active': True,
-                'updated_by': request.user
-            }
-        )
-        
-        if not created:
-            # Update existing EXACOIN price
-            exacoin.buy_price = Decimal(str(price))
-            exacoin.sell_price = Decimal(str(price))
-            exacoin.change_24h = Decimal(str(change24h))
-            exacoin.change_7d = Decimal(str(change7d))
-            exacoin.change_30d = Decimal(str(change30d))
-            exacoin.is_active = True
-            exacoin.updated_by = request.user
-            exacoin.save()
+        try:
+            # Get existing price record
+            crypto_price = AdminCryptoPrice.objects.get(coin=coin)
+            
+            # Update sell price (always allowed)
+            crypto_price.sell_price = Decimal(str(sell_price))
+            
+            # Update buy price only for EXACOIN or if provided
+            if coin == 'EXACOIN' and buy_price:
+                crypto_price.buy_price = Decimal(str(buy_price))
+                crypto_price.change_24h = Decimal(str(change24h))
+                crypto_price.change_7d = Decimal(str(change7d))
+                crypto_price.change_30d = Decimal(str(change30d))
+            elif buy_price:  # For other coins, update buy price if provided
+                crypto_price.buy_price = Decimal(str(buy_price))
+            
+            crypto_price.is_active = True
+            crypto_price.updated_by = request.user
+            crypto_price.save()
+            
+        except AdminCryptoPrice.DoesNotExist:
+            # Create new price record if it doesn't exist
+            if not buy_price:
+                return Response({
+                    'success': False,
+                    'error': f'Buy price is required to create new {coin} price record'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            crypto_price = AdminCryptoPrice.objects.create(
+                coin=coin,
+                name=coin,
+                buy_price=Decimal(str(buy_price)),
+                sell_price=Decimal(str(sell_price)),
+                change_24h=Decimal(str(change24h)),
+                change_7d=Decimal(str(change7d)),
+                change_30d=Decimal(str(change30d)),
+                is_active=True,
+                updated_by=request.user
+            )
         
         # Log price change to history
         CryptoPriceHistory.objects.create(
             coin=coin,
-            buy_price=exacoin.buy_price,
-            sell_price=exacoin.sell_price,
-            change_24h=exacoin.change_24h,
+            buy_price=crypto_price.buy_price,
+            sell_price=crypto_price.sell_price,
+            change_24h=crypto_price.change_24h,
             updated_by=request.user
         )
     
     # Return in exact frontend format
     return Response({
         'data': {
-            'coin': exacoin.coin,
-            'price': float(f"{exacoin.buy_price:.2f}"),
-            'change24h': float(f"{exacoin.change_24h:.2f}"),
-            'change7d': float(f"{exacoin.change_7d:.2f}"),
-            'change30d': float(f"{exacoin.change_30d:.2f}"),
-            'updated_at': exacoin.last_updated.isoformat()
+            'coin': crypto_price.coin,
+            'buy_price': float(f"{crypto_price.buy_price:.2f}"),
+            'sell_price': float(f"{crypto_price.sell_price:.2f}"),
+            'change24h': float(f"{crypto_price.change_24h:.2f}"),
+            'change7d': float(f"{crypto_price.change_7d:.2f}"),
+            'change30d': float(f"{crypto_price.change_30d:.2f}"),
+            'updated_at': crypto_price.last_updated.isoformat()
         },
         'success': True
-    }, status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

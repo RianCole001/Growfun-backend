@@ -642,14 +642,13 @@ def crypto_sell(request):
 
 
 @api_view(['GET'])
-@api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def crypto_prices(request):
     """
-    Get crypto prices - EXACOIN from admin DB, all others from CoinGecko API
+    Get crypto prices - Admin-controlled coins from DB, others from CoinGecko API
     
-    EXACOIN: Admin-controlled (stored in database)
-    BTC, ETH, BNB, ADA, SOL, DOT: Real-time from CoinGecko API
+    Admin-controlled: EXACOIN, OPTCOIN (stored in database)
+    Market-based: BTC, ETH, BNB, ADA, SOL, DOT, USDT (real-time from CoinGecko API)
     
     All prices formatted with 2 decimals, all percentages with decimals
     """
@@ -658,29 +657,40 @@ def crypto_prices(request):
     
     prices = {}
     
-    # 1. Get EXACOIN from admin-controlled database (ONLY coin admin controls)
+    # 1. Get ALL admin-controlled coins from database (EXACOIN, OPTCOIN, etc.)
     try:
-        exacoin = AdminCryptoPrice.objects.get(coin='EXACOIN', is_active=True)
-        prices['EXACOIN'] = {
-            'price': float(f"{exacoin.buy_price:.2f}"),
-            'change24h': float(f"{exacoin.change_24h:.2f}"),
-            'change7d': float(f"{exacoin.change_7d:.2f}"),
-            'change30d': float(f"{exacoin.change_30d:.2f}")
+        admin_coins = AdminCryptoPrice.objects.filter(is_active=True)
+        for coin in admin_coins:
+            prices[coin.coin] = {
+                'price': float(f"{coin.buy_price:.2f}"),
+                'change24h': float(f"{coin.change_24h:.2f}"),
+                'change7d': float(f"{coin.change_7d:.2f}"),
+                'change30d': float(f"{coin.change_30d:.2f}")
+            }
+    except Exception as e:
+        print(f"⚠️ Error fetching admin coins: {e}")
+        # Default admin-controlled coins if database fails
+        admin_defaults = {
+            'EXACOIN': {
+                'price': 62.00,
+                'change24h': 3.33,
+                'change7d': 12.80,
+                'change30d': 89.50
+            },
+            'OPTCOIN': {
+                'price': 85.30,
+                'change24h': 12.40,
+                'change7d': 8.60,
+                'change30d': 25.70
+            }
         }
-    except AdminCryptoPrice.DoesNotExist:
-        # Default EXACOIN if not set by admin yet
-        prices['EXACOIN'] = {
-            'price': 125.50,
-            'change24h': 45.20,
-            'change7d': 12.80,
-            'change30d': 89.50
-        }
+        prices.update(admin_defaults)
     
-    # 2. Fetch ALL other coins from CoinGecko API (real-time market prices)
+    # 2. Fetch market-based coins from CoinGecko API (real-time market prices)
     try:
         coingecko_url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
-            'ids': 'bitcoin,ethereum,binancecoin,cardano,solana,polkadot',
+            'ids': 'bitcoin,ethereum,binancecoin,cardano,solana,polkadot,tether',
             'vs_currencies': 'usd',
             'include_24hr_change': 'true',
             'include_7d_change': 'true',
@@ -699,7 +709,8 @@ def crypto_prices(request):
                 'binancecoin': 'BNB',
                 'cardano': 'ADA',
                 'solana': 'SOL',
-                'polkadot': 'DOT'
+                'polkadot': 'DOT',
+                'tether': 'USDT'
             }
             
             for gecko_id, symbol in coin_mapping.items():
@@ -717,7 +728,7 @@ def crypto_prices(request):
             
     except Exception as e:
         print(f"⚠️ CoinGecko API error: {e}")
-        print("📊 Using fallback prices for other coins")
+        print("📊 Using fallback prices for market-based coins")
         
         # Fallback: Use static prices if API fails (only as backup)
         fallback_prices = {
@@ -726,11 +737,12 @@ def crypto_prices(request):
             'BNB': {'price': 420.00, 'change24h': 0.50, 'change7d': 2.10, 'change30d': 10.20},
             'ADA': {'price': 1.25, 'change24h': -0.80, 'change7d': 1.50, 'change30d': 5.30},
             'SOL': {'price': 120.00, 'change24h': 3.20, 'change7d': 5.80, 'change30d': 20.10},
-            'DOT': {'price': 6.40, 'change24h': -1.20, 'change7d': 0.50, 'change30d': 3.80}
+            'DOT': {'price': 6.40, 'change24h': -1.20, 'change7d': 0.50, 'change30d': 3.80},
+            'USDT': {'price': 1.00, 'change24h': 0.01, 'change7d': 0.02, 'change30d': 0.05}
         }
         
         for symbol, data in fallback_prices.items():
-            if symbol not in prices:
+            if symbol not in prices:  # Don't override admin-controlled prices
                 prices[symbol] = data
     
     return Response({

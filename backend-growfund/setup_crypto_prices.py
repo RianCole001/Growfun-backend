@@ -28,6 +28,15 @@ try:
             'change_30d': 89.50
         },
         {
+            'coin': 'OPTCOIN',
+            'name': 'OptCoin',
+            'buy_price': 85.30,
+            'sell_price': 82.74,
+            'change_24h': 12.40,
+            'change_7d': 8.60,
+            'change_30d': 25.70
+        },
+        {
             'coin': 'BTC',
             'name': 'Bitcoin',
             'buy_price': 65000.00,

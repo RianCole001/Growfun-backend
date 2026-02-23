@@ -26,7 +26,18 @@ class Command(BaseCommand):
                 'auto_approve_withdrawal_limit': Decimal('500.00'),
                 'email_notifications': True,
                 'sms_notifications': False,
-                'referral_bonus': Decimal('50.00')
+                'referral_bonus': Decimal('50.00'),
+                'min_capital_plan_investment': Decimal('500.00'),
+                'min_real_estate_investment': Decimal('1000.00'),
+                'min_crypto_investment': Decimal('50.00'),
+                # Capital Plan Individual Minimums
+                'capital_basic_min': Decimal('100.00'),
+                'capital_standard_min': Decimal('500.00'),
+                'capital_advance_min': Decimal('2000.00'),
+                # Real Estate Individual Minimums
+                'real_estate_starter_min': Decimal('1000.00'),
+                'real_estate_premium_min': Decimal('5000.00'),
+                'real_estate_luxury_min': Decimal('20000.00'),
             }
         )
         
@@ -48,3 +59,6 @@ class Command(BaseCommand):
         self.stdout.write(f'  Referral Bonus: ${settings.referral_bonus}')
         self.stdout.write(f'  Auto-approve Deposits: {settings.auto_approve_deposits}')
         self.stdout.write(f'  Auto-approve Withdrawals: {settings.auto_approve_withdrawals}')
+        self.stdout.write(f'  Min Capital Plan Investment: ${settings.min_capital_plan_investment}')
+        self.stdout.write(f'  Min Real Estate Investment: ${settings.min_real_estate_investment}')
+        self.stdout.write(f'  Min Crypto Investment: ${settings.min_crypto_investment}')

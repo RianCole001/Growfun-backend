@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'referrals',
     'notifications',
     'settings_app',
+    'demo',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'accounts.middleware.AdminSecurityMiddleware',  # Admin security
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'settings_app.middleware.MaintenanceModeMiddleware',  # Maintenance mode check

@@ -117,6 +117,17 @@ class PublicSettingsView(APIView):
                 'maxWithdrawal': str(settings.max_withdrawal),
                 'depositFee': str(settings.deposit_fee),
                 'withdrawalFee': str(settings.withdrawal_fee),
-                'referralBonus': str(settings.referral_bonus)
+                'referralBonus': str(settings.referral_bonus),
+                'minCapitalPlanInvestment': str(settings.min_capital_plan_investment),
+                'minRealEstateInvestment': str(settings.min_real_estate_investment),
+                'minCryptoInvestment': str(settings.min_crypto_investment),
+                # Capital Plan Individual Minimums
+                'capitalBasicMin': str(settings.capital_basic_min),
+                'capitalStandardMin': str(settings.capital_standard_min),
+                'capitalAdvanceMin': str(settings.capital_advance_min),
+                # Real Estate Individual Minimums
+                'realEstateStarterMin': str(settings.real_estate_starter_min),
+                'realEstatePremiumMin': str(settings.real_estate_premium_min),
+                'realEstateLuxuryMin': str(settings.real_estate_luxury_min),
             }
         }, status=status.HTTP_200_OK)

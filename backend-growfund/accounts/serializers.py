@@ -106,10 +106,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         
         # Create referral record and claim reward if referrer exists
         if referred_by:
+            # Get referral bonus from platform settings
+            from settings_app.models import PlatformSettings
+            platform_settings = PlatformSettings.get_settings()
+            referral_bonus_amount = platform_settings.referral_bonus
+            
             referral = Referral.objects.create(
                 referrer=referred_by,
                 referred_user=user,
-                reward_amount=5.00,
+                reward_amount=referral_bonus_amount,
                 status='pending'
             )
             # Automatically claim the reward

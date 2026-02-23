@@ -113,6 +113,75 @@ class PlatformSettings(models.Model):
         help_text='Bonus amount for successful referrals'
     )
     
+    # Investment Limits
+    min_capital_plan_investment = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('500.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum amount for capital plan investments'
+    )
+    min_real_estate_investment = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('1000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum amount for real estate investments'
+    )
+    min_crypto_investment = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('50.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum amount for crypto investments'
+    )
+    
+    # Capital Plan Individual Minimums
+    capital_basic_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('100.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Basic capital plan'
+    )
+    capital_standard_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('500.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Standard capital plan'
+    )
+    capital_advance_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('2000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Advance capital plan'
+    )
+    
+    # Real Estate Individual Minimums
+    real_estate_starter_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('1000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Starter Property'
+    )
+    real_estate_premium_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('5000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Premium Property'
+    )
+    real_estate_luxury_min = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('20000.00'),
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='Minimum investment for Luxury Estate'
+    )
+    
     # Metadata
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
@@ -155,7 +224,9 @@ class PlatformSettings(models.Model):
             raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Only run validation on updates, not initial creation
+        if self.pk:
+            self.full_clean()
         super().save(*args, **kwargs)
     
     @classmethod

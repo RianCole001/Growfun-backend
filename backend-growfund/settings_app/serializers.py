@@ -15,6 +15,20 @@ class PlatformSettingsSerializer(serializers.ModelSerializer):
     depositFee = serializers.DecimalField(source='deposit_fee', max_digits=5, decimal_places=2)
     withdrawalFee = serializers.DecimalField(source='withdrawal_fee', max_digits=5, decimal_places=2)
     referralBonus = serializers.DecimalField(source='referral_bonus', max_digits=12, decimal_places=2)
+    minCapitalPlanInvestment = serializers.DecimalField(source='min_capital_plan_investment', max_digits=12, decimal_places=2)
+    minRealEstateInvestment = serializers.DecimalField(source='min_real_estate_investment', max_digits=12, decimal_places=2)
+    minCryptoInvestment = serializers.DecimalField(source='min_crypto_investment', max_digits=12, decimal_places=2)
+    
+    # Capital Plan Individual Minimums
+    capitalBasicMin = serializers.DecimalField(source='capital_basic_min', max_digits=12, decimal_places=2)
+    capitalStandardMin = serializers.DecimalField(source='capital_standard_min', max_digits=12, decimal_places=2)
+    capitalAdvanceMin = serializers.DecimalField(source='capital_advance_min', max_digits=12, decimal_places=2)
+    
+    # Real Estate Individual Minimums
+    realEstateStarterMin = serializers.DecimalField(source='real_estate_starter_min', max_digits=12, decimal_places=2)
+    realEstatePremiumMin = serializers.DecimalField(source='real_estate_premium_min', max_digits=12, decimal_places=2)
+    realEstateLuxuryMin = serializers.DecimalField(source='real_estate_luxury_min', max_digits=12, decimal_places=2)
+    
     maintenanceMode = serializers.BooleanField(source='maintenance_mode')
     emailNotifications = serializers.BooleanField(source='email_notifications')
     smsNotifications = serializers.BooleanField(source='sms_notifications')
@@ -40,7 +54,12 @@ class PlatformSettingsSerializer(serializers.ModelSerializer):
         fields = [
             'platformName', 'platformEmail', 'minDeposit', 'maxDeposit',
             'minWithdrawal', 'maxWithdrawal', 'depositFee', 'withdrawalFee',
-            'referralBonus', 'maintenanceMode', 'emailNotifications',
+            'referralBonus', 'minCapitalPlanInvestment', 'minRealEstateInvestment', 'minCryptoInvestment',
+            # Capital Plan Individual Minimums
+            'capitalBasicMin', 'capitalStandardMin', 'capitalAdvanceMin',
+            # Real Estate Individual Minimums
+            'realEstateStarterMin', 'realEstatePremiumMin', 'realEstateLuxuryMin',
+            'maintenanceMode', 'emailNotifications',
             'smsNotifications', 'autoApproveDeposits', 'autoApproveWithdrawals',
             'autoApproveDepositLimit', 'autoApproveWithdrawalLimit',
             'updatedAt', 'updatedBy'
