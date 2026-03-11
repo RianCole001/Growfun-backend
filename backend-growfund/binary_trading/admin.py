@@ -12,8 +12,8 @@ class TradingAssetAdmin(admin.ModelAdmin):
 
 @admin.register(BinaryTrade)
 class BinaryTradeAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user_email', 'asset_symbol', 'direction', 'amount', 'status', 'profit_loss', 'opened_at']
-    list_filter = ['status', 'direction', 'asset']
+    list_display = ['id', 'user_email', 'asset_symbol', 'direction', 'amount', 'status', 'profit_loss', 'is_demo', 'opened_at']
+    list_filter = ['status', 'direction', 'asset', 'is_demo']
     search_fields = ['user__email', 'asset__symbol']
     readonly_fields = ['id', 'opened_at', 'closed_at']
     ordering = ['-opened_at']

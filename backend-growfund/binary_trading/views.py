@@ -59,7 +59,7 @@ def get_all_prices(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def open_trade(request):
-    """Open a new binary trade"""
+    """Open a new binary trade (real or demo)"""
     serializer = OpenTradeSerializer(data=request.data)
     
     if not serializer.is_valid():
@@ -69,6 +69,7 @@ def open_trade(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     data = serializer.validated_data
+    is_demo = data.get('is_demo', False)
     
     # Execute trade
     trade, error = TradeExecutionService.open_trade(
@@ -76,7 +77,8 @@ def open_trade(request):
         asset_symbol=data['asset_symbol'],
         direction=data['direction'],
         amount=data['amount'],
-        expiry_seconds=data['expiry_seconds']
+        expiry_seconds=data['expiry_seconds'],
+        is_demo=is_demo
     )
     
     if error:
@@ -87,21 +89,33 @@ def open_trade(request):
     
     trade_serializer = BinaryTradeSerializer(trade)
     
+    # Get appropriate balance
+    if is_demo:
+        from demo.models import DemoAccount
+        demo_account = DemoAccount.objects.get(user=request.user)
+        new_balance = float(demo_account.balance)
+    else:
+        new_balance = float(request.user.balance)
+    
     return Response({
         'success': True,
-        'message': 'Trade opened successfully',
+        'message': f'{"Demo" if is_demo else "Real"} trade opened successfully',
         'trade': trade_serializer.data,
-        'new_balance': float(request.user.balance)
+        'new_balance': new_balance,
+        'is_demo': is_demo
     }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_active_trades(request):
-    """Get all active trades for the user"""
+    """Get all active trades for the user (real and demo separated)"""
+    is_demo = request.GET.get('is_demo', 'false').lower() == 'true'
+    
     trades = BinaryTrade.objects.filter(
         user=request.user,
-        status='active'
+        status='active',
+        is_demo=is_demo
     ).select_related('asset')
     
     serializer = BinaryTradeSerializer(trades, many=True)
@@ -109,7 +123,8 @@ def get_active_trades(request):
     return Response({
         'success': True,
         'trades': serializer.data,
-        'count': trades.count()
+        'count': trades.count(),
+        'is_demo': is_demo
     })
 
 
@@ -117,28 +132,32 @@ def get_active_trades(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_trade_history(request):
-    """Get trade history for the user"""
+    """Get trade history for the user (real and demo separated)"""
     # Get query parameters
     limit = int(request.GET.get('limit', 50))
     offset = int(request.GET.get('offset', 0))
+    is_demo = request.GET.get('is_demo', 'false').lower() == 'true'
     
     trades = BinaryTrade.objects.filter(
         user=request.user,
-        status__in=['won', 'lost']
+        status__in=['won', 'lost'],
+        is_demo=is_demo
     ).select_related('asset').order_by('-closed_at')[offset:offset+limit]
     
     serializer = BinaryTradeSerializer(trades, many=True)
     
     total_count = BinaryTrade.objects.filter(
         user=request.user,
-        status__in=['won', 'lost']
+        status__in=['won', 'lost'],
+        is_demo=is_demo
     ).count()
     
     return Response({
         'success': True,
         'trades': serializer.data,
         'count': len(serializer.data),
-        'total': total_count
+        'total': total_count,
+        'is_demo': is_demo
     })
 
 
@@ -165,4 +184,24 @@ def close_expired_trades(request):
         'success': True,
         'message': f"Closed {results['closed']} trades, {results['errors']} errors",
         'results': results
+    })
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_balances(request):
+    """Get both real and demo balances"""
+    from demo.models import DemoAccount
+    
+    # Get or create demo account
+    demo_account, created = DemoAccount.objects.get_or_create(
+        user=request.user,
+        defaults={'balance': Decimal('10000.00')}
+    )
+    
+    return Response({
+        'success': True,
+        'real_balance': float(request.user.balance),
+        'demo_balance': float(demo_account.balance)
     })

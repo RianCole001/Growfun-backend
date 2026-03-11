@@ -14,6 +14,9 @@ urlpatterns = [
     path('trades/active/', views.get_active_trades, name='active-trades'),
     path('trades/history/', views.get_trade_history, name='trade-history'),
     
+    # Balances
+    path('balances/', views.get_balances, name='get-balances'),
+    
     # Stats
     path('stats/', views.get_user_stats, name='user-stats'),
     

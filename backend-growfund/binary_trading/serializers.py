@@ -25,6 +25,7 @@ class OpenTradeSerializer(serializers.Serializer):
     direction = serializers.ChoiceField(choices=['buy', 'sell'])
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('10.00'))
     expiry_seconds = serializers.IntegerField(min_value=60, max_value=3600)
+    is_demo = serializers.BooleanField(default=False)
     
     def validate_asset_symbol(self, value):
         try:
@@ -46,7 +47,8 @@ class BinaryTradeSerializer(serializers.ModelSerializer):
             'id', 'asset_symbol', 'asset_name', 'direction', 'amount',
             'strike_price', 'final_price', 'adjusted_payout_percentage',
             'expiry_seconds', 'opened_at', 'expires_at', 'closed_at',
-            'status', 'profit_loss', 'time_remaining', 'potential_profit'
+            'status', 'profit_loss', 'time_remaining', 'potential_profit',
+            'is_demo'
         ]
     
     def get_time_remaining(self, obj):

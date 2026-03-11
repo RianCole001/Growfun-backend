@@ -90,6 +90,9 @@ class BinaryTrade(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='binary_trades')
     asset = models.ForeignKey(TradingAsset, on_delete=models.PROTECT)
     
+    # Demo mode flag
+    is_demo = models.BooleanField(default=False)
+    
     # Trade details
     direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)

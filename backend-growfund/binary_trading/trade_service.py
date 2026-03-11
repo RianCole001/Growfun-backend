@@ -5,7 +5,7 @@ Handles opening and closing of binary trades
 from decimal import Decimal
 from django.utils import timezone
 from datetime import timedelta
-from django.db import transaction
+from django.db import transaction, models
 from .models import BinaryTrade, TradingAsset, UserTradingStats
 from .house_edge import HouseEdgeCalculator
 from .price_feed import PriceFeedService
@@ -55,12 +55,12 @@ class TradeExecutionService:
     
     @staticmethod
     @transaction.atomic
-    def open_trade(user, asset_symbol, direction, amount, expiry_seconds):
+    def open_trade(user, asset_symbol, direction, amount, expiry_seconds, is_demo=False):
         """
         Open a new binary trade with house edge applied
+        is_demo: If True, uses demo balance instead of real balance
         Returns: (trade_object, error_message)
         """
-        from django.db import models
         
         # Get asset
         try:
@@ -74,14 +74,28 @@ class TradeExecutionService:
         if amount > asset.max_trade_amount:
             return None, f"Maximum trade amount is ${asset.max_trade_amount}"
         
-        # Check user balance
-        if user.balance < amount:
-            return None, "Insufficient balance"
+        # Check balance based on mode
+        if is_demo:
+            # Get or create demo account
+            from demo.models import DemoAccount
+            demo_account, created = DemoAccount.objects.get_or_create(
+                user=user,
+                defaults={'balance': Decimal('10000.00')}
+            )
+            if demo_account.balance < amount:
+                return None, "Insufficient demo balance"
+            balance_source = demo_account
+        else:
+            # Use real balance
+            if user.balance < amount:
+                return None, "Insufficient balance"
+            balance_source = user
         
-        # Validate trade limits
-        valid, error = TradeExecutionService.validate_trade_limits(user, asset, amount)
-        if not valid:
-            return None, error
+        # Validate trade limits (only for real trades)
+        if not is_demo:
+            valid, error = TradeExecutionService.validate_trade_limits(user, asset, amount)
+            if not valid:
+                return None, error
         
         # Get current price
         current_price = PriceFeedService.get_current_price(asset_symbol)
@@ -102,9 +116,9 @@ class TradeExecutionService:
         # Calculate expiry time
         expires_at = timezone.now() + timedelta(seconds=expiry_seconds)
         
-        # Deduct amount from user balance
-        user.balance -= amount
-        user.save(update_fields=['balance'])
+        # Deduct amount from appropriate balance
+        balance_source.balance -= amount
+        balance_source.save(update_fields=['balance'])
         
         # Create trade
         trade = BinaryTrade.objects.create(
@@ -121,7 +135,8 @@ class TradeExecutionService:
             status='active',
             execution_delay_ms=params['execution_delay_ms'],
             user_win_streak=params['user_win_streak'],
-            user_total_profit=params['user_total_profit']
+            user_total_profit=params['user_total_profit'],
+            is_demo=is_demo
         )
         
         return trade, None
@@ -158,8 +173,15 @@ class TradeExecutionService:
             trade.status = 'won'
             trade.profit_loss = profit
             
-            # Return stake + profit to user
-            trade.user.balance += (trade.amount + profit)
+            # Return stake + profit to appropriate balance
+            if trade.is_demo:
+                from demo.models import DemoAccount
+                demo_account = DemoAccount.objects.get(user=trade.user)
+                demo_account.balance += (trade.amount + profit)
+                demo_account.save(update_fields=['balance'])
+            else:
+                trade.user.balance += (trade.amount + profit)
+                trade.user.save(update_fields=['balance'])
         else:
             trade.status = 'lost'
             trade.profit_loss = -trade.amount
@@ -167,11 +189,11 @@ class TradeExecutionService:
         
         trade.final_price = final_price
         trade.closed_at = timezone.now()
-        trade.user.save(update_fields=['balance'])
         trade.save()
         
-        # Update user stats
-        TradeExecutionService.update_user_stats(trade)
+        # Update user stats (only for real trades)
+        if not trade.is_demo:
+            TradeExecutionService.update_user_stats(trade)
         
         return trade, None
     
