@@ -45,7 +45,7 @@ class User(AbstractUser):
     bio = models.TextField(blank=True, null=True)
     
     # Account status
-    is_verified = models.BooleanField(default=False)
+    is_verified = models.BooleanField(default=True)  # Auto-verify users
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     
     # Verification

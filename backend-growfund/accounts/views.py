@@ -74,10 +74,7 @@ class LoginView(APIView):
             user = authenticate(request, username=email, password=password)
             
             if user is not None:
-                if not user.is_verified:
-                    return Response({
-                        'error': 'Email not verified. Please check your email.'
-                    }, status=status.HTTP_403_FORBIDDEN)
+                # Removed verification check - users are auto-verified
                 
                 # Update last login
                 user.last_login_at = timezone.now()

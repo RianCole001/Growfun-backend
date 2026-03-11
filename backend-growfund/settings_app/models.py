@@ -140,21 +140,21 @@ class PlatformSettings(models.Model):
     capital_basic_min = models.DecimalField(
         max_digits=12, 
         decimal_places=2, 
-        default=Decimal('100.00'),
+        default=Decimal('30.00'),
         validators=[MinValueValidator(Decimal('0.01'))],
         help_text='Minimum investment for Basic capital plan'
     )
     capital_standard_min = models.DecimalField(
         max_digits=12, 
         decimal_places=2, 
-        default=Decimal('500.00'),
+        default=Decimal('60.00'),
         validators=[MinValueValidator(Decimal('0.01'))],
         help_text='Minimum investment for Standard capital plan'
     )
     capital_advance_min = models.DecimalField(
         max_digits=12, 
         decimal_places=2, 
-        default=Decimal('2000.00'),
+        default=Decimal('100.00'),
         validators=[MinValueValidator(Decimal('0.01'))],
         help_text='Minimum investment for Advance capital plan'
     )

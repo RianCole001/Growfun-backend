@@ -134,6 +134,7 @@ class UserSerializer(serializers.ModelSerializer):
     """Serializer for user details"""
     
     full_name = serializers.CharField(source='get_full_name', read_only=True)
+    balance = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     
     class Meta:
         model = User

@@ -2,6 +2,10 @@ from rest_framework import serializers
 from .models import Transaction, MoMoPayment
 
 class TransactionSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    fee = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    net_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    
     class Meta:
         model = Transaction
         fields = [

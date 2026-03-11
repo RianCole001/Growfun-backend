@@ -17,6 +17,18 @@ class PlatformSettingsAdmin(admin.ModelAdmin):
         ('Fees', {
             'fields': ('deposit_fee', 'withdrawal_fee')
         }),
+        ('Investment Minimums', {
+            'fields': ('min_capital_plan_investment', 'min_crypto_investment', 'min_real_estate_investment'),
+            'description': 'General minimum investment amounts for each investment type'
+        }),
+        ('Capital Plan Minimums', {
+            'fields': ('capital_basic_min', 'capital_standard_min', 'capital_advance_min'),
+            'description': 'Minimum investment amounts for each capital plan tier'
+        }),
+        ('Real Estate Minimums', {
+            'fields': ('real_estate_starter_min', 'real_estate_premium_min', 'real_estate_luxury_min'),
+            'description': 'Minimum investment amounts for each real estate tier'
+        }),
         ('Automation', {
             'fields': ('auto_approve_deposits', 'auto_approve_withdrawals', 
                       'auto_approve_deposit_limit', 'auto_approve_withdrawal_limit')

@@ -7,6 +7,11 @@ from datetime import timedelta
 class CapitalInvestmentPlanSerializer(serializers.ModelSerializer):
     """Serializer for Capital Investment Plan"""
     
+    initial_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    growth_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    total_return = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    final_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    
     class Meta:
         model = CapitalInvestmentPlan
         fields = [
@@ -33,10 +38,37 @@ class CreateCapitalInvestmentPlanSerializer(serializers.Serializer):
     
     def validate(self, data):
         """Validate investment plan data"""
+        from settings_app.models import PlatformSettings
+        
         if data['initial_amount'] <= 0:
             raise serializers.ValidationError("Initial amount must be greater than 0")
         
         plan_type = data['plan_type']
+        initial_amount = data['initial_amount']
+        
+        # Get minimum investment amounts from settings
+        try:
+            settings = PlatformSettings.objects.first()
+            if settings:
+                if plan_type == 'basic' and initial_amount < settings.capital_basic_min:
+                    raise serializers.ValidationError({
+                        'initial_amount': f'Minimum investment for Basic plan is ${settings.capital_basic_min}'
+                    })
+                elif plan_type == 'standard' and initial_amount < settings.capital_standard_min:
+                    raise serializers.ValidationError({
+                        'initial_amount': f'Minimum investment for Standard plan is ${settings.capital_standard_min}'
+                    })
+                elif plan_type == 'advance' and initial_amount < settings.capital_advance_min:
+                    raise serializers.ValidationError({
+                        'initial_amount': f'Minimum investment for Advance plan is ${settings.capital_advance_min}'
+                    })
+        except Exception as e:
+            # If settings don't exist, use hardcoded minimums
+            minimums = {'basic': 30.00, 'standard': 60.00, 'advance': 100.00}
+            if initial_amount < minimums[plan_type]:
+                raise serializers.ValidationError({
+                    'initial_amount': f'Minimum investment for {plan_type.title()} plan is ${minimums[plan_type]}'
+                })
         
         # Set default growth rates based on plan type
         if plan_type == 'basic':
@@ -61,6 +93,10 @@ class CapitalInvestmentPlanDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for capital investment plans with monthly breakdown"""
     
     monthly_breakdown = serializers.SerializerMethodField()
+    initial_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    growth_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    total_return = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    final_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     
     class Meta:
         model = CapitalInvestmentPlan
@@ -161,8 +197,13 @@ from .admin_models import AdminCryptoPrice, CryptoPriceHistory
 
 class AdminCryptoPriceSerializer(serializers.ModelSerializer):
     """Serializer for admin crypto price management"""
+    buy_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    sell_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    change_24h = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
+    change_7d = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
+    change_30d = serializers.DecimalField(max_digits=8, decimal_places=2, required=False, allow_null=True)
     spread = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    spread_percentage = serializers.DecimalField(max_digits=8, decimal_places=4, read_only=True)
+    spread_percentage = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
     updated_by_email = serializers.EmailField(source='updated_by.email', read_only=True)
     
     class Meta:
@@ -176,23 +217,7 @@ class AdminCryptoPriceSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'last_updated', 'created_at']
     
     def validate(self, data):
-        """Ensure sell price is less than buy price"""
-        buy_price = data.get('buy_price')
-        sell_price = data.get('sell_price')
-        
-        if buy_price and sell_price and sell_price >= buy_price:
-            raise serializers.ValidationError({
-                'sell_price': 'Sell price must be less than buy price to maintain spread.'
-            })
-        
-        # Recommend 3-5% spread
-        if buy_price and sell_price:
-            spread_pct = ((buy_price - sell_price) / buy_price) * 100
-            if spread_pct < 2:
-                raise serializers.ValidationError({
-                    'sell_price': f'Spread is too low ({spread_pct:.2f}%). Recommended: 3-5% for profitability.'
-                })
-        
+        """Removed price restrictions - allow any buy/sell price combination"""
         return data
 
 

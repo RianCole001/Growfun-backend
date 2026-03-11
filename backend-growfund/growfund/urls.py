@@ -21,6 +21,7 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/demo/', include('demo.urls')),  # Demo trading system
     path('api/settings/', include('settings_app.urls')),  # Platform settings
+    path('api/binary/', include('binary_trading.urls')),  # Binary options trading
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
 

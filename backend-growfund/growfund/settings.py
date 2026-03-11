@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'notifications',
     'settings_app',
     'demo',
+    'binary_trading',
 ]
 
 MIDDLEWARE = [

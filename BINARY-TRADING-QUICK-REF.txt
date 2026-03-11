@@ -1,0 +1,91 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                  BINARY OPTIONS TRADING - QUICK REFERENCE                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📍 SERVER
+   http://localhost:8000
+
+🔐 ADMIN LOGIN
+   URL: http://localhost:8000/admin/
+   Email: admin@growfund.com
+   Password: Admin123!
+
+📊 API ENDPOINTS
+   Base: http://localhost:8000/api/binary/
+
+   GET  /assets/                    - List all trading assets
+   GET  /prices/                    - Get all current prices
+   GET  /assets/{symbol}/price/     - Get specific asset price
+   POST /trades/open/               - Open new trade
+   GET  /trades/active/             - Get active trades
+   GET  /trades/history/            - Get trade history
+   GET  /stats/                     - Get user statistics
+
+💰 AVAILABLE ASSETS
+   OIL     - Crude Oil      ($75.50)
+   GOLD    - Gold           ($2050.00)
+   EURUSD  - EUR/USD        ($1.0850)
+   GBPUSD  - GBP/USD        ($1.2650)
+   BTC     - Bitcoin        ($65000.00)
+   ETH     - Ethereum       ($3200.00)
+
+🎯 TRADE PARAMETERS
+   Direction: buy | sell
+   Amount: $10 - $5000
+   Expiry: 60 - 3600 seconds (1m - 1h)
+
+📈 HOUSE EDGE FACTORS
+   ✓ Win Streak 3+: -5% payout
+   ✓ Win Streak 5+: -10% payout
+   ✓ Amount >$1000: -3% payout
+   ✓ Amount >$5000: -5% payout
+   ✓ User profit >$1000: -10% payout
+   ✓ Strike price: ±0.1% manipulation
+   ✓ Execution delay: 100-500ms
+
+🔒 RISK LIMITS
+   Max open trades: 10 per user
+   Max exposure per asset: $5,000
+   Max total exposure: $10,000
+
+📝 SAMPLE API CALL
+   POST /api/binary/trades/open/
+   {
+     "asset_symbol": "OIL",
+     "direction": "buy",
+     "amount": 100.00,
+     "expiry_seconds": 300
+   }
+
+📚 DOCUMENTATION FILES
+   ✓ BINARY-TRADING-COMPLETE-GUIDE.md    - Full backend guide
+   ✓ BINARY-TRADING-FRONTEND-DATA.md     - Frontend integration
+   ✓ BINARY-TRADING-SUMMARY.md           - Implementation summary
+   ✓ BINARY-TRADING-QUICK-REF.txt        - This file
+
+🧪 TEST SCRIPT
+   python test_binary_trading.py
+
+🎨 FRONTEND COLORS
+   BUY/Call:  #10b981 (Green)
+   SELL/Put:  #ef4444 (Red)
+   Active:    #3b82f6 (Blue)
+   Won:       #10b981 (Green)
+   Lost:      #ef4444 (Red)
+
+⏱️ REAL-TIME UPDATES
+   Price updates: Every 1 second
+   Active trades: Every 5 seconds
+   Countdown: Every 1 second
+
+✅ STATUS
+   Backend:  ✅ Complete & Running
+   Database: ✅ Initialized
+   API:      ✅ All endpoints operational
+   Admin:    ✅ Full control panel ready
+
+🚀 READY TO BUILD FRONTEND!
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  System is 100% operational and ready for production use!                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝

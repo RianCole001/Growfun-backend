@@ -3,12 +3,18 @@ from .models import DemoAccount, DemoInvestment, DemoTransaction
 
 class DemoAccountSerializer(serializers.ModelSerializer):
     user_email = serializers.CharField(source='user.email', read_only=True)
+    balance = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     
     class Meta:
         model = DemoAccount
         fields = ['id', 'user_email', 'balance', 'is_active', 'created_at', 'updated_at']
 
 class DemoInvestmentSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=8, read_only=True)
+    price_at_purchase = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    monthly_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    
     class Meta:
         model = DemoInvestment
         fields = [
@@ -18,6 +24,10 @@ class DemoInvestmentSerializer(serializers.ModelSerializer):
         ]
 
 class DemoTransactionSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    quantity = serializers.DecimalField(max_digits=12, decimal_places=8, read_only=True)
+    price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    
     class Meta:
         model = DemoTransaction
         fields = [
