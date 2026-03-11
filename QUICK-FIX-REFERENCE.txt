@@ -1,0 +1,135 @@
+================================================================================
+BINARY TRADING - QUICK FIX REFERENCE
+================================================================================
+
+✅ BACKEND STATUS: FIXED AND WORKING
+
+Issue: Balance not deducting after placing trade
+Fix: Added missing import in trade_service.py
+Status: ✅ RESOLVED
+
+Verification:
+  cd backend-growfund
+  python verify_trading_fix.py
+
+Result:
+  ✅ Demo trades deduct demo balance
+  ✅ Real trades deduct real balance
+  ✅ Balances update on win/loss
+  ✅ Complete separation between demo/real
+
+================================================================================
+FRONTEND ISSUES TO CHECK
+================================================================================
+
+1. BALANCE NOT UPDATING IN UI
+   
+   Problem: Backend returns new_balance but UI doesn't update
+   
+   Solution: Update state from API response
+   
+   if (response.data.success) {
+     if (tradingMode === 'demo') {
+       setDemoBalance(response.data.new_balance);
+     } else {
+       setRealBalance(response.data.new_balance);
+     }
+   }
+
+2. CHART BECOMES DORMANT
+   
+   Problem: Chart stops updating after placing trade
+   
+   Cause: Price polling interval gets cleared
+   
+   Solution: Use independent polling with empty dependency array
+   
+   useEffect(() => {
+     const fetchPrices = async () => {
+       const res = await axios.get('/api/binary/prices/');
+       setPrices(res.data.prices);
+     };
+     
+     fetchPrices();
+     const interval = setInterval(fetchPrices, 1000);
+     
+     return () => clearInterval(interval);
+   }, []); // ← Empty array is critical!
+
+================================================================================
+API ENDPOINTS
+================================================================================
+
+Base URL: http://localhost:8000/api/binary/
+
+GET  /prices/              → Get all asset prices
+GET  /balances/            → Get real + demo balance
+POST /trades/open/         → Open trade (returns new_balance)
+GET  /trades/active/       → Get active trades
+GET  /trades/history/      → Get trade history
+
+================================================================================
+TESTING
+================================================================================
+
+1. Backend Test:
+   cd backend-growfund
+   python verify_trading_fix.py
+
+2. API Test:
+   curl http://localhost:8000/api/binary/prices/
+
+3. Frontend Test:
+   - Open browser DevTools → Network tab
+   - Place a trade
+   - Check response has "new_balance"
+   - Verify /prices/ is called every 1 second
+
+================================================================================
+COMMON MISTAKES
+================================================================================
+
+❌ Don't do this:
+   useEffect(() => {
+     // polling code
+   }, [trades, balance, mode]); // ← Dependencies cause re-runs
+
+✅ Do this:
+   useEffect(() => {
+     // polling code
+   }, []); // ← Empty array, runs once
+
+❌ Don't do this:
+   if (error) {
+     clearInterval(priceInterval); // ← Stops polling
+   }
+
+✅ Do this:
+   if (error) {
+     console.error(error); // ← Log but keep polling
+   }
+
+================================================================================
+FILES MODIFIED
+================================================================================
+
+backend-growfund/binary_trading/trade_service.py  → Fixed import
+BINARY-TRADING-FIX-SUMMARY.md                     → Complete fix guide
+BINARY-TRADING-FRONTEND-INTEGRATION.md            → Frontend implementation
+backend-growfund/verify_trading_fix.py            → Test script
+
+================================================================================
+SUMMARY
+================================================================================
+
+Backend: ✅ Working perfectly
+Balance: ✅ Deducts correctly
+Trades:  ✅ Open and close correctly
+
+Frontend Issues:
+  1. Balance UI update → Check state management
+  2. Chart dormant → Fix polling interval
+
+Next Step: Check frontend console and network tab for errors
+
+================================================================================
