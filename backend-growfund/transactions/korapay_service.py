@@ -41,7 +41,7 @@ class KorapayService:
                 "email": customer_email
             },
             "notification_url": config('KORAPAY_WEBHOOK_URL', default=''),
-            "redirect_url": config('FRONTEND_URL', default='http://localhost:3000') + '/payment/callback',
+            "redirect_url": config('FRONTEND_URL', default='https://dashboard-yfb8.onrender.com') + '/payment/callback',
         }
         
         # Add payment method specific data

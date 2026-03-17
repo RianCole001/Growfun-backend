@@ -742,9 +742,11 @@ class ReferralStatsView(APIView):
             else:
                 pending_earnings += float(referral.reward_amount)
         
+        from django.conf import settings as django_settings
+        frontend_url = getattr(django_settings, 'FRONTEND_URL', 'https://dashboard-yfb8.onrender.com')
         stats = {
             'referral_code': user.referral_code,
-            'referral_link': f'http://localhost:3000/register?ref={user.referral_code}',
+            'referral_link': f'{frontend_url}/register?ref={user.referral_code}',
             'total_referrals': referrals.count(),
             'active_referrals': referrals.filter(status='active').count(),
             'pending_referrals': referrals.filter(status='pending').count(),

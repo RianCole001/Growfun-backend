@@ -58,8 +58,8 @@ def expresspay_deposit(request):
     order_id = f"DEP-{uuid.uuid4().hex[:12].upper()}"
 
     # URLs ExpressPay will use
-    frontend_url  = config('FRONTEND_URL', default='http://localhost:3000')
-    backend_url   = config('BACKEND_URL',  default='http://localhost:8000')
+    frontend_url  = config('FRONTEND_URL', default='https://dashboard-yfb8.onrender.com')
+    backend_url   = config('BACKEND_URL',  default='https://growfun-backend.onrender.com')
     redirect_url  = f"{frontend_url}/payment/callback"
     post_url      = f"{backend_url}/api/transactions/expresspay/post-url/"
 

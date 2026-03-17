@@ -229,6 +229,9 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@growfund.com'
 # Frontend URL
 FRONTEND_URL = config('FRONTEND_URL', default='https://dashboard-yfb8.onrender.com')
 
+# Backend URL (used for webhooks and callbacks)
+BACKEND_URL = config('BACKEND_URL', default='https://growfun-backend.onrender.com')
+
 # Celery Configuration
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
