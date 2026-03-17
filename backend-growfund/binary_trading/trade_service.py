@@ -22,18 +22,19 @@ class TradeExecutionService:
         if not config:
             return True, None
 
-        open_trades = BinaryTrade.objects.filter(user=user, status='active').count()
+        # Only count REAL (non-demo) trades against limits
+        open_trades = BinaryTrade.objects.filter(user=user, status='active', is_demo=False).count()
         if open_trades >= config.max_open_trades_per_user:
             return False, f"Maximum {config.max_open_trades_per_user} open trades allowed"
 
         asset_exposure = BinaryTrade.objects.filter(
-            user=user, asset=asset, status='active'
+            user=user, asset=asset, status='active', is_demo=False
         ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
         if asset_exposure + amount > config.max_exposure_per_asset:
             return False, f"Maximum ${config.max_exposure_per_asset} exposure per asset"
 
         total_exposure = BinaryTrade.objects.filter(
-            user=user, status='active'
+            user=user, status='active', is_demo=False
         ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
         if total_exposure + amount > config.max_total_exposure:
             return False, f"Maximum ${config.max_total_exposure} total exposure"
@@ -234,6 +235,30 @@ class TradeExecutionService:
                 TradeExecutionService.update_user_stats(trade)
             except Exception as e:
                 print(f"⚠️ Failed to update stats for trade {trade_id}: {e}")
+        else:
+            # Record demo binary trade result in DemoTransaction history
+            try:
+                from demo.models import DemoAccount, DemoTransaction
+                demo_acc = DemoAccount.objects.get(user=trade.user)
+                tx_type = 'return' if trade.status == 'won' else 'investment'
+                DemoTransaction.objects.create(
+                    demo_account=demo_acc,
+                    transaction_type=tx_type,
+                    amount=abs(trade.profit_loss) if trade.profit_loss else trade.amount,
+                    asset=trade.asset.symbol,
+                    description=(
+                        f"Demo binary {trade.direction.upper()} {trade.asset.symbol} — "
+                        f"{'WON' if trade.status == 'won' else 'LOST'} "
+                        f"${abs(trade.profit_loss):.2f}"
+                    )
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to record demo transaction for trade {trade_id}: {e}")
+            # Update demo-specific stats
+            try:
+                TradeExecutionService.update_demo_stats(trade)
+            except Exception as e:
+                print(f"⚠️ Failed to update demo stats for trade {trade_id}: {e}")
 
         return trade, None
 
@@ -276,6 +301,34 @@ class TradeExecutionService:
                     stats.flagged_at = timezone.now()
 
             stats.save(update_fields=['net_profit', 'max_win_streak', 'is_flagged', 'flag_reason', 'flagged_at'])
+
+    @staticmethod
+    def update_demo_stats(trade):
+        """Update DemoTradingStats after a demo trade closes."""
+        from django.db.models import F
+        from django.db import transaction as _tx
+        from .models import DemoTradingStats
+
+        with _tx.atomic():
+            stats, _ = DemoTradingStats.objects.select_for_update().get_or_create(user=trade.user)
+
+            stats.total_trades = F('total_trades') + 1
+            stats.total_volume = F('total_volume') + trade.amount
+
+            if trade.status == 'won':
+                stats.total_wins = F('total_wins') + 1
+                stats.current_win_streak = F('current_win_streak') + 1
+                stats.total_profit = F('total_profit') + trade.profit_loss
+            elif trade.status == 'lost':
+                stats.total_losses = F('total_losses') + 1
+                stats.current_win_streak = 0
+                stats.total_loss = F('total_loss') + abs(trade.profit_loss)
+
+            stats.save()
+            stats.refresh_from_db()
+            stats.net_profit = stats.total_profit - stats.total_loss
+            stats.max_win_streak = max(stats.max_win_streak, stats.current_win_streak)
+            stats.save(update_fields=['net_profit', 'max_win_streak'])
 
     @staticmethod
     def close_expired_trades():

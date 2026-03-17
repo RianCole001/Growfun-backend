@@ -7,7 +7,7 @@ from decimal import Decimal
 from .models import TradingAsset, BinaryTrade, UserTradingStats, AssetPrice
 from .serializers import (
     TradingAssetSerializer, OpenTradeSerializer, BinaryTradeSerializer,
-    UserTradingStatsSerializer, AssetPriceSerializer
+    UserTradingStatsSerializer, DemoTradingStatsSerializer, AssetPriceSerializer
 )
 from .trade_service import TradeExecutionService
 from .price_feed import PriceFeedService
@@ -133,44 +133,68 @@ def get_active_trades(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_trade_history(request):
-    """Get trade history for the user (real and demo separated)"""
-    # Get query parameters
-    limit = int(request.GET.get('limit', 50))
+    """
+    Get trade history for the user — real and demo are strictly separated.
+    Includes won, lost, and cancelled trades.
+    """
+    limit = min(int(request.GET.get('limit', 50)), 200)
     offset = int(request.GET.get('offset', 0))
     is_demo = request.GET.get('is_demo', 'false').lower() == 'true'
-    
-    trades = BinaryTrade.objects.filter(
+
+    base_qs = BinaryTrade.objects.filter(
         user=request.user,
-        status__in=['won', 'lost'],
+        status__in=['won', 'lost', 'cancelled'],
         is_demo=is_demo
-    ).select_related('asset').order_by('-closed_at')[offset:offset+limit]
-    
+    ).select_related('asset').order_by('-closed_at', '-opened_at')
+
+    trades = base_qs[offset:offset + limit]
     serializer = BinaryTradeSerializer(trades, many=True)
-    
-    total_count = BinaryTrade.objects.filter(
-        user=request.user,
-        status__in=['won', 'lost'],
-        is_demo=is_demo
-    ).count()
-    
+
+    total_count = base_qs.count()
+
+    # Summary for this account type
+    from django.db.models import Sum
+    won_qs  = base_qs.filter(status='won')
+    lost_qs = base_qs.filter(status='lost')
+    total_wagered = base_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
+    total_won     = won_qs.aggregate(t=Sum('profit_loss'))['t'] or Decimal('0')
+    total_lost    = lost_qs.aggregate(t=Sum('profit_loss'))['t'] or Decimal('0')
+
     return Response({
         'success': True,
+        'is_demo': is_demo,
         'trades': serializer.data,
         'count': len(serializer.data),
         'total': total_count,
-        'is_demo': is_demo
+        'summary': {
+            'total_wagered': float(total_wagered),
+            'total_won': float(total_won),
+            'net_pnl': float(total_won + total_lost),
+            'win_count': won_qs.count(),
+            'loss_count': lost_qs.count(),
+        }
     })
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_stats(request):
-    """Get trading statistics for the user"""
-    stats, created = UserTradingStats.objects.get_or_create(user=request.user)
-    serializer = UserTradingStatsSerializer(stats)
-    
+    """
+    Get trading statistics for the user.
+    Returns real and demo stats separately — they never mix.
+    """
+    is_demo = request.GET.get('is_demo', 'false').lower() == 'true'
+
+    if is_demo:
+        from .models import DemoTradingStats
+        stats, _ = DemoTradingStats.objects.get_or_create(user=request.user)
+        serializer = DemoTradingStatsSerializer(stats)
+    else:
+        stats, _ = UserTradingStats.objects.get_or_create(user=request.user)
+        serializer = UserTradingStatsSerializer(stats)
     return Response({
         'success': True,
+        'is_demo': is_demo,
         'stats': serializer.data
     })
 

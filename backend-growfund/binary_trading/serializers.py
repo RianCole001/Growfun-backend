@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import TradingAsset, BinaryTrade, UserTradingStats, AssetPrice, HouseEdgeConfig
+from .models import TradingAsset, BinaryTrade, UserTradingStats, AssetPrice, HouseEdgeConfig, DemoTradingStats
 from decimal import Decimal
 
 
@@ -69,6 +69,19 @@ class UserTradingStatsSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserTradingStats
+        fields = [
+            'total_trades', 'total_wins', 'total_losses',
+            'current_win_streak', 'max_win_streak', 'win_rate',
+            'total_profit', 'total_loss', 'net_profit', 'total_volume'
+        ]
+
+
+# Reuse same field layout for demo stats
+class DemoTradingStatsSerializer(serializers.ModelSerializer):
+    win_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DemoTradingStats
         fields = [
             'total_trades', 'total_wins', 'total_losses',
             'current_win_streak', 'max_win_streak', 'win_rate',

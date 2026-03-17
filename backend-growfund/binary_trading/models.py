@@ -171,6 +171,34 @@ class UserTradingStats(models.Model):
         return (self.total_wins / self.total_trades) * 100
 
 
+class DemoTradingStats(models.Model):
+    """Track demo trading statistics — completely separate from real stats."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='demo_trading_stats')
+
+    total_trades = models.IntegerField(default=0)
+    total_wins = models.IntegerField(default=0)
+    total_losses = models.IntegerField(default=0)
+    current_win_streak = models.IntegerField(default=0)
+    max_win_streak = models.IntegerField(default=0)
+
+    total_profit = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    total_loss = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    net_profit = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    total_volume = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.email} - Demo Stats"
+
+    @property
+    def win_rate(self):
+        if self.total_trades == 0:
+            return 0
+        return (self.total_wins / self.total_trades) * 100
+
+
 class AssetPrice(models.Model):
     """Real-time price tracking for assets"""
     asset = models.ForeignKey(TradingAsset, on_delete=models.CASCADE, related_name='prices')
