@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, korapay_views, admin_views
+from . import views, korapay_views, admin_views, expresspay_views
 
 app_name = 'transactions'
 
@@ -26,6 +26,12 @@ urlpatterns = [
     path('korapay/webhook/', korapay_views.korapay_webhook, name='korapay-webhook'),
     path('korapay/banks/', korapay_views.korapay_get_banks, name='korapay-banks'),
     path('korapay/resolve-account/', korapay_views.korapay_resolve_account, name='korapay-resolve-account'),
+
+    # ExpressPay Ghana endpoints
+    path('expresspay/deposit/', expresspay_views.expresspay_deposit, name='expresspay-deposit'),
+    path('expresspay/callback/', expresspay_views.expresspay_callback, name='expresspay-callback'),
+    path('expresspay/verify/', expresspay_views.expresspay_verify, name='expresspay-verify'),
+    path('expresspay/post-url/', expresspay_views.expresspay_post_url, name='expresspay-post-url'),
 ]
 
 # Admin endpoints - separate URL pattern for clarity
