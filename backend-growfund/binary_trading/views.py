@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
+from decimal import Decimal
 from .models import TradingAsset, BinaryTrade, UserTradingStats, AssetPrice
 from .serializers import (
     TradingAssetSerializer, OpenTradeSerializer, BinaryTradeSerializer,
@@ -179,13 +180,108 @@ def get_user_stats(request):
 def close_expired_trades(request):
     """Manually trigger closing of expired trades (admin only)"""
     results = TradeExecutionService.close_expired_trades()
-    
     return Response({
         'success': True,
         'message': f"Closed {results['closed']} trades, {results['errors']} errors",
         'results': results
     })
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def close_trade(request, trade_id):
+    """
+    Close a specific trade by ID.
+    Called by the frontend when the countdown timer reaches zero.
+    Users can only close their own trades.
+    """
+    try:
+        trade = BinaryTrade.objects.get(id=trade_id, user=request.user)
+    except BinaryTrade.DoesNotExist:
+        return Response({'success': False, 'error': 'Trade not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if trade.status != 'active':
+        # Already settled — just return current state
+        from .serializers import BinaryTradeSerializer
+        return Response({'success': True, 'trade': BinaryTradeSerializer(trade).data})
+
+    # Only allow closing if expired or within 2s of expiry (grace window)
+    seconds_remaining = (trade.expires_at - timezone.now()).total_seconds()
+    if seconds_remaining > 2:
+        return Response({
+            'success': False,
+            'error': f'Trade expires in {int(seconds_remaining)}s'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    closed_trade, error = TradeExecutionService.close_trade(trade_id)
+    if error:
+        return Response({'success': False, 'error': error}, status=status.HTTP_400_BAD_REQUEST)
+
+    from .serializers import BinaryTradeSerializer
+    if trade.is_demo:
+        from demo.models import DemoAccount
+        demo_account = DemoAccount.objects.get(user=request.user)
+        new_balance = float(demo_account.balance)
+    else:
+        request.user.refresh_from_db()
+        new_balance = float(request.user.balance)
+
+    return Response({
+        'success': True,
+        'trade': BinaryTradeSerializer(closed_trade).data,
+        'new_balance': new_balance,
+        'is_demo': closed_trade.is_demo
+    })
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_chart_data(request, symbol):
+    """
+    Return OHLC candlestick data for a trading asset.
+
+    Query params:
+      interval  - 1m | 5m | 15m | 30m | 1h | 4h | 1d  (default: 1m)
+      limit     - number of candles to return           (default: 100, max: 500)
+
+    Sources (in priority order):
+      Crypto  → CoinGecko OHLC API (real market data)
+      Gold    → Yahoo Finance GC=F  (real market data)
+      Oil     → Yahoo Finance CL=F  (real market data)
+      Forex   → Yahoo Finance EURUSD=X etc. (real market data)
+      Fallback→ Aggregated stored price ticks (when all APIs unavailable)
+    """
+    from .chart_service import ChartService
+
+    interval = request.GET.get('interval', '1m')
+    valid_intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
+    if interval not in valid_intervals:
+        return Response({
+            'success': False,
+            'error': f'Invalid interval. Choose from: {", ".join(valid_intervals)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        limit = min(int(request.GET.get('limit', 100)), 500)
+    except ValueError:
+        limit = 100
+
+    candles = ChartService.get_ohlc(symbol.upper(), interval, limit)
+
+    if not candles:
+        return Response({
+            'success': False,
+            'error': f'No chart data available for {symbol.upper()}'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'success': True,
+        'symbol': symbol.upper(),
+        'interval': interval,
+        'candles': candles,
+        'count': len(candles),
+    })
 
 
 @api_view(['GET'])

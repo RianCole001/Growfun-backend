@@ -481,6 +481,7 @@ def crypto_buy(request):
                 'id': str(crypto_investment.id),
                 'type': 'crypto',
                 'coin': coin,
+                'name': admin_price.name if admin_price.name else coin,
                 'amount': f"{amount:.2f}",
                 'quantity': f"{quantity:.8f}",
                 'price_at_purchase': f"{price:.2f}",
@@ -492,6 +493,7 @@ def crypto_buy(request):
                 'type': 'Crypto Purchase',
                 'amount': f"{amount:.2f}",
                 'asset': coin,
+                'asset_name': admin_price.name if admin_price.name else coin,
                 'quantity': f"{quantity:.8f}",
                 'price': f"{price:.2f}",
                 'status': 'completed',
@@ -751,49 +753,153 @@ def crypto_prices(request):
     }, status=status.HTTP_200_OK)
 
 
+def _fetch_live_prices(coins):
+    """
+    Fetch live market prices and full names for a set of coin symbols.
+    - Admin-controlled coins (EXACOIN, OPTCOIN, etc.) come from AdminCryptoPrice DB.
+    - Standard market coins come from CoinGecko API.
+    Returns:
+        prices: { 'BTC': Decimal('64000.00'), 'EXACOIN': Decimal('62.00'), ... }
+        names:  { 'BTC': 'Bitcoin', 'EXACOIN': 'Exacoin', ... }
+    """
+    from .admin_models import AdminCryptoPrice
+    import requests
+
+    # CoinGecko symbol -> (id, full name) for known market coins
+    COINGECKO_MAP = {
+        'BTC':   ('bitcoin',       'Bitcoin'),
+        'ETH':   ('ethereum',      'Ethereum'),
+        'BNB':   ('binancecoin',   'BNB'),
+        'ADA':   ('cardano',       'Cardano'),
+        'SOL':   ('solana',        'Solana'),
+        'DOT':   ('polkadot',      'Polkadot'),
+        'USDT':  ('tether',        'Tether'),
+        'XRP':   ('ripple',        'XRP'),
+        'DOGE':  ('dogecoin',      'Dogecoin'),
+        'MATIC': ('matic-network', 'Polygon'),
+        'LTC':   ('litecoin',      'Litecoin'),
+        'AVAX':  ('avalanche-2',   'Avalanche'),
+        'LINK':  ('chainlink',     'Chainlink'),
+        'UNI':   ('uniswap',       'Uniswap'),
+        'ATOM':  ('cosmos',        'Cosmos'),
+    }
+
+    live_prices = {}
+    coin_names = {}
+
+    # 1. Admin-controlled coins from DB — use their stored name field
+    admin_coins = AdminCryptoPrice.objects.filter(is_active=True)
+    admin_symbols = set()
+    for coin in admin_coins:
+        live_prices[coin.coin] = coin.buy_price
+        coin_names[coin.coin] = coin.name if coin.name else coin.coin
+        admin_symbols.add(coin.coin)
+
+    # 2. Market coins via CoinGecko — names come from our mapping
+    market_coins = [c for c in coins if c not in admin_symbols and c in COINGECKO_MAP]
+    if market_coins:
+        gecko_ids = [COINGECKO_MAP[c][0] for c in market_coins]
+        # Pre-populate names from our mapping (no extra API call needed)
+        for c in market_coins:
+            coin_names[c] = COINGECKO_MAP[c][1]
+        try:
+            response = requests.get(
+                "https://api.coingecko.com/api/v3/simple/price",
+                params={'ids': ','.join(gecko_ids), 'vs_currencies': 'usd'},
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                reverse_map = {COINGECKO_MAP[c][0]: c for c in market_coins}
+                for gecko_id, price_data in data.items():
+                    symbol = reverse_map.get(gecko_id)
+                    if symbol:
+                        live_prices[symbol] = Decimal(str(price_data.get('usd', 0)))
+        except Exception as e:
+            print(f"⚠️ CoinGecko price fetch error: {e}")
+
+    return live_prices, coin_names
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def user_crypto_portfolio(request):
     """
-    Get user's crypto portfolio
+    Get user's crypto portfolio with live market prices.
+    - EXACOIN, OPTCOIN and other admin-controlled coins use AdminCryptoPrice (buy_price).
+    - BTC, ETH, BNB, SOL, etc. use real-time CoinGecko prices.
     """
     crypto_investments = Trade.objects.filter(
         user=request.user,
         status='open'
-    ).exclude(asset__in=['gold'])  # Exclude non-crypto assets
-    
+    ).exclude(asset__in=['gold'])
+
+    if not crypto_investments.exists():
+        return Response({
+            'data': {
+                'investments': [],
+                'summary': {
+                    'total_invested': '0.00',
+                    'total_value': '0.00',
+                    'total_profit_loss': '0.00',
+                    'total_profit_loss_percentage': 0.0,
+                    'investment_count': 0
+                }
+            },
+            'success': True
+        }, status=status.HTTP_200_OK)
+
+    # Collect all unique coin symbols held by the user
+    held_coins = set(inv.asset for inv in crypto_investments)
+
+    # Fetch live prices for all held coins in one shot
+    live_prices, coin_names = _fetch_live_prices(held_coins)
+
     portfolio = []
     total_value = Decimal('0')
     total_invested = Decimal('0')
-    
+
     for investment in crypto_investments:
+        coin = investment.asset
         invested_amount = investment.entry_price * investment.quantity
-        current_value = investment.quantity * (investment.current_price if investment.current_price else investment.entry_price)
+
+        # Use live price; fall back to stored current_price, then entry_price
+        current_price = live_prices.get(coin) or investment.current_price or investment.entry_price
+
+        # Keep the stored current_price in sync
+        if live_prices.get(coin) and live_prices[coin] != investment.current_price:
+            investment.current_price = live_prices[coin]
+            investment.save(update_fields=['current_price'])
+
+        current_value = investment.quantity * current_price
         profit_loss = current_value - invested_amount
-        profit_loss_percentage = (profit_loss / invested_amount) * 100 if invested_amount > 0 else 0
-        
+        profit_loss_percentage = (profit_loss / invested_amount) * 100 if invested_amount > 0 else Decimal('0')
+
+        # Full coin name: from our lookup, fallback to the symbol itself
+        full_name = coin_names.get(coin, coin)
+
         portfolio.append({
             'id': str(investment.id),
             'type': 'crypto',
-            'coin': investment.asset,
-            'name': f"{investment.asset} Investment",
+            'coin': coin,
+            'name': full_name,
             'amount': f"{invested_amount:.2f}",
             'quantity': f"{investment.quantity:.8f}",
             'price_at_purchase': f"{investment.entry_price:.2f}",
-            'current_price': f"{investment.current_price:.2f}" if investment.current_price else f"{investment.entry_price:.2f}",
+            'current_price': f"{current_price:.2f}",
             'current_value': f"{current_value:.2f}",
             'profit_loss': f"{profit_loss:.2f}",
             'profit_loss_percentage': float(f"{profit_loss_percentage:.2f}"),
             'status': 'active',
             'date': investment.created_at.isoformat()
         })
-        
+
         total_value += current_value
         total_invested += invested_amount
-    
+
     total_profit_loss = total_value - total_invested
-    total_profit_loss_percentage = (total_profit_loss / total_invested) * 100 if total_invested > 0 else 0
-    
+    total_profit_loss_percentage = (total_profit_loss / total_invested) * 100 if total_invested > 0 else Decimal('0')
+
     return Response({
         'data': {
             'investments': portfolio,

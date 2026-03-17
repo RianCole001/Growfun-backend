@@ -103,52 +103,6 @@ def demo_deposit(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def demo_withdraw(request):
-    """Demo withdrawal"""
-    amount = Decimal(str(request.data.get('amount', 0)))
-    
-    if amount <= 0:
-        return Response({
-            'success': False,
-            'error': 'Invalid amount'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        with transaction.atomic():
-            demo_account = DemoAccount.objects.get(user=request.user)
-            
-            if demo_account.balance < amount:
-                return Response({
-                    'success': False,
-                    'error': 'Insufficient balance'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            demo_account.balance -= amount
-            demo_account.save()
-            
-            # Create transaction record
-            demo_transaction = DemoTransaction.objects.create(
-                demo_account=demo_account,
-                transaction_type='withdrawal',
-                amount=amount,
-                description=f'Demo withdrawal of ${amount}'
-            )
-            
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': demo_account.balance,
-                    'transaction': DemoTransactionSerializer(demo_transaction).data
-                }
-            })
-    except DemoAccount.DoesNotExist:
-        return Response({
-            'success': False,
-            'error': 'Demo account not found'
-        }, status=status.HTTP_404_NOT_FOUND)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
 def demo_buy_crypto(request):
     """Demo crypto purchase"""
     coin = request.data.get('coin')

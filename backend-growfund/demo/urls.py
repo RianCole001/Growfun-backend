@@ -7,7 +7,6 @@ urlpatterns = [
     path('account/', views.demo_account, name='demo-account'),
     path('balance/', views.demo_balance, name='demo-balance'),
     path('deposit/', views.demo_deposit, name='demo-deposit'),
-    path('withdraw/', views.demo_withdraw, name='demo-withdraw'),
     path('crypto/buy/', views.demo_buy_crypto, name='demo-buy-crypto'),
     path('crypto/sell/', views.demo_sell_crypto, name='demo-sell-crypto'),
     path('invest/', views.demo_invest, name='demo-invest'),
