@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',') if config('ALLOWED_HOSTS', default='') else ['*']
 
@@ -49,6 +49,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -121,6 +122,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files
 MEDIA_URL = 'media/'
@@ -165,11 +167,12 @@ if DEBUG:
     # Development: Allow all origins (works with ngrok, localhost, etc.)
     CORS_ALLOW_ALL_ORIGINS = True
 else:
-    # Production: Restrict to specific origins
+    # Production: Allow all origins (frontend on Render + any future domains)
+    CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOWED_ORIGINS = [
-        'https://growfund-dashboard.onrender.com',  # Original frontend URL
-        'https://dashboard-yfb8.onrender.com',      # Current frontend URL
-        'http://localhost:3000',  # Local development
+        'https://growfund-dashboard.onrender.com',
+        'https://dashboard-yfb8.onrender.com',
+        'http://localhost:3000',
         'http://localhost:3001',
         'http://127.0.0.1:3000',
     ]

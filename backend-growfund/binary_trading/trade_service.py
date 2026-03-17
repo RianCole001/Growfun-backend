@@ -254,8 +254,7 @@ class TradeExecutionService:
         results = {'closed': 0, 'errors': 0, 'error_details': []}
 
         for trade_id in expired:
-            _, error = TradeExecutionService.close_t
-rade(trade_id)
+            _, error = TradeExecutionService.close_trade(trade_id)
             if error:
                 results['errors'] += 1
                 results['error_details'].append({'trade_id': str(trade_id), 'error': error})
