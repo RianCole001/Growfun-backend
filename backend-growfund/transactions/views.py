@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from django.db import models
+from django.db import models, transaction as db_transaction
 from decimal import Decimal
 import uuid
 
@@ -115,29 +115,39 @@ def momo_withdrawal(request):
     fee = amount * Decimal('0.02')
     net_amount = amount - fee
     
-    # Check if user has sufficient balance
-    if request.user.balance < amount:
-        return Response({
-            'success': False,
-            'message': 'Insufficient balance'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
     # Generate unique reference
     reference = f"WTH-{uuid.uuid4().hex[:12].upper()}"
-    
-    # Create transaction record
-    transaction = Transaction.objects.create(
-        user=request.user,
-        transaction_type='withdrawal',
-        payment_method='momo',
-        amount=amount,
-        fee=fee,
-        net_amount=net_amount,
-        status='pending',
-        reference=reference,
-        phone_number=phone_number,
-        description=f"MoMo withdrawal of {amount}"
-    )
+
+    # Atomically check balance and deduct to prevent race conditions
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        with db_transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=request.user.pk)
+            if locked_user.balance < amount:
+                return Response({
+                    'success': False,
+                    'message': 'Insufficient balance'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            locked_user.balance -= amount
+            locked_user.save(update_fields=['balance'])
+            request.user.balance = locked_user.balance
+
+            # Create transaction record inside the same atomic block
+            transaction = Transaction.objects.create(
+                user=request.user,
+                transaction_type='withdrawal',
+                payment_method='momo',
+                amount=amount,
+                fee=fee,
+                net_amount=net_amount,
+                status='pending',
+                reference=reference,
+                phone_number=phone_number,
+                description=f"MoMo withdrawal of {amount}"
+            )
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     # Create MoMo payment record
     momo_payment = MoMoPayment.objects.create(
@@ -163,10 +173,6 @@ def momo_withdrawal(request):
         momo_payment.momo_reference = result['reference_id']
         momo_payment.save()
         
-        # Deduct from user balance
-        request.user.balance -= amount
-        request.user.save()
-        
         return Response({
             'success': True,
             'message': 'Withdrawal initiated successfully',
@@ -180,6 +186,14 @@ def momo_withdrawal(request):
     else:
         transaction.status = 'failed'
         transaction.save()
+        
+        # Refund balance since MoMo API failed
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        with db_transaction.atomic():
+            u = User.objects.select_for_update().get(pk=request.user.pk)
+            u.balance += amount
+            u.save(update_fields=['balance'])
         
         return Response({
             'success': False,
@@ -228,23 +242,33 @@ def check_payment_status(request):
         
         # Update transaction status
         if momo_status == 'SUCCESSFUL' and transaction.status != 'completed':
-            transaction.status = 'completed'
-            transaction.completed_at = timezone.now()
-            transaction.save()
-            
-            # For deposits, credit user balance
-            if transaction.transaction_type == 'deposit':
-                request.user.balance += transaction.amount
-                request.user.save()
+            with db_transaction.atomic():
+                # Re-fetch inside transaction to prevent double-credit
+                txn = Transaction.objects.select_for_update().get(pk=transaction.pk)
+                if txn.status != 'completed':
+                    txn.status = 'completed'
+                    txn.completed_at = timezone.now()
+                    txn.save()
+                    if txn.transaction_type == 'deposit':
+                        from django.contrib.auth import get_user_model
+                        User = get_user_model()
+                        u = User.objects.select_for_update().get(pk=txn.user_id)
+                        u.balance += txn.amount
+                        u.save(update_fields=['balance'])
+            transaction.refresh_from_db()
         
         elif momo_status == 'FAILED':
             transaction.status = 'failed'
             transaction.save()
             
-            # For withdrawals, refund if failed
+            # For withdrawals, refund if failed (balance was deducted on initiation)
             if transaction.transaction_type == 'withdrawal' and transaction.status == 'processing':
-                request.user.balance += transaction.amount
-                request.user.save()
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                with db_transaction.atomic():
+                    u = User.objects.select_for_update().get(pk=transaction.user_id)
+                    u.balance += transaction.amount
+                    u.save(update_fields=['balance'])
         
         return Response({
             'success': True,

@@ -439,6 +439,16 @@ def crypto_buy(request):
     quantity = amount / price
     
     with db_transaction.atomic():
+        # Lock user row to prevent race conditions on balance
+        from django.contrib.auth import get_user_model as _get_user_model
+        _User = _get_user_model()
+        locked_user = _User.objects.select_for_update().get(pk=request.user.pk)
+        if locked_user.balance < amount:
+            return Response({
+                'success': False,
+                'message': 'Insufficient balance'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Create crypto investment (using Trade model)
         crypto_investment = Trade.objects.create(
             user=request.user,
@@ -451,8 +461,9 @@ def crypto_buy(request):
         )
         
         # Deduct from user balance
-        request.user.balance -= amount
-        request.user.save()
+        locked_user.balance -= amount
+        locked_user.save(update_fields=['balance'])
+        request.user.balance = locked_user.balance
         
         # Create transaction record
         from transactions.models import Transaction
@@ -593,8 +604,12 @@ def crypto_sell(request):
             crypto_investment.save()
         
         # Credit user balance
-        request.user.balance += amount
-        request.user.save()
+        from django.contrib.auth import get_user_model as _get_user_model
+        _User = _get_user_model()
+        locked_user = _User.objects.select_for_update().get(pk=request.user.pk)
+        locked_user.balance += amount
+        locked_user.save(update_fields=['balance'])
+        request.user.balance = locked_user.balance
         
         # Create transaction record
         from transactions.models import Transaction

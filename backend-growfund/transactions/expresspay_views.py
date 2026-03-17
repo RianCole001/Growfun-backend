@@ -181,6 +181,19 @@ def expresspay_post_url(request):
     if not token:
         return Response({'success': False}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Validate the token exists in our DB before querying ExpressPay
+    # This prevents arbitrary tokens being submitted to trigger queries
+    from .models import Transaction
+    token_exists = Transaction.objects.filter(
+        external_reference=token
+    ).exists() or Transaction.objects.filter(
+        metadata__token=token
+    ).exists()
+
+    if not token_exists:
+        # Return 200 to prevent ExpressPay from retrying, but don't process
+        return Response({'success': True}, status=status.HTTP_200_OK)
+
     # Settle without a user context (webhook is server-to-server)
     _settle_transaction(token=token, order_id=order_id, user=None)
 

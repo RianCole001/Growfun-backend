@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from datetime import timedelta
 import uuid
+from decimal import Decimal
 
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
@@ -50,7 +51,6 @@ class RegisterView(APIView):
                 'message': 'Registration successful! Please check your email to verify your account.',
                 'email': user.email,
                 'email_sent': email_sent,
-                'verification_url': f"{settings.FRONTEND_URL}/verify-email?token={user.verification_token}",  # For testing
                 'redirect': '/verify-email-sent'
             }, status=status.HTTP_201_CREATED)
         
@@ -251,7 +251,6 @@ class ForgotPasswordView(APIView):
                 
                 return Response({
                     'message': 'Password reset link sent to your email.',
-                    'reset_token': str(user.reset_token)  # For testing
                 }, status=status.HTTP_200_OK)
             
             except User.DoesNotExist:
@@ -504,7 +503,17 @@ class AdminUserDetailView(APIView):
             if 'company' in request.data:
                 user.company = request.data['company']
             if 'balance' in request.data:
-                user.balance = request.data['balance']
+                try:
+                    new_balance = Decimal(str(request.data['balance']))
+                    if new_balance < Decimal('0'):
+                        return Response({'error': 'Balance cannot be negative'}, status=status.HTTP_400_BAD_REQUEST)
+                    if new_balance > Decimal('10000000'):
+                        return Response({'error': 'Balance exceeds maximum allowed value'}, status=status.HTTP_400_BAD_REQUEST)
+                    old_balance = user.balance
+                    user.balance = new_balance
+                    print(f"[AUDIT] Admin {request.user.email} changed balance of {user.email}: {old_balance} → {new_balance}")
+                except Exception:
+                    return Response({'error': 'Invalid balance value'}, status=status.HTTP_400_BAD_REQUEST)
             if 'is_verified' in request.data:
                 user.is_verified = request.data['is_verified']
             
