@@ -72,7 +72,7 @@ class HouseEdgeConfigAdmin(admin.ModelAdmin):
             )
         }),
         ('Strike Price Manipulation', {
-            'fields': ('strike_price_adjustment',)
+            'fields': ('strike_price_adjustment', 'atm_is_loss')
         }),
         ('Execution Delay', {
             'fields': ('min_delay_ms', 'max_delay_ms')

@@ -53,6 +53,9 @@ class HouseEdgeConfig(models.Model):
     # Strike price manipulation
     strike_price_adjustment = models.DecimalField(max_digits=5, decimal_places=4, default=0.0010)
     
+    # ATM (at-the-money) rule: True = treat as loss (house keeps stake), False = refund stake
+    atm_is_loss = models.BooleanField(default=True, help_text='If final price == strike price, treat as loss (True) or refund stake (False)')
+    
     # Execution delay
     min_delay_ms = models.IntegerField(default=100)
     max_delay_ms = models.IntegerField(default=500)

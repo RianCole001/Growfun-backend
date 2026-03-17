@@ -53,10 +53,14 @@ class HouseEdgeCalculator:
         if self.stats.net_profit >= self.config.high_profit_threshold:
             edge += self.config.high_profit_reduction
 
-        # Cap at 30%
+        # Cap edge at 30%
         edge = min(edge, Decimal('30.00'))
 
         adjusted_payout = base_payout - edge
+
+        # Floor: payout can never go below 50% (still profitable for platform)
+        adjusted_payout = max(adjusted_payout, Decimal('50.00'))
+
         return adjusted_payout, edge
 
     def adjust_strike_price(self, current_price, direction):
@@ -80,6 +84,37 @@ class HouseEdgeCalculator:
         delay_range = self.config.max_delay_ms - self.config.min_delay_ms
         return self.config.min_delay_ms + int(delay_range * edge_factor)
 
+    def get_side_imbalance_factor(self, asset, direction):
+        """
+        Dynamic payout reduction based on side imbalance.
+        If too many users are on the same side, reduce payout on that side
+        to protect platform exposure.
+        Returns extra reduction percentage (0-10%).
+        """
+        from .models import BinaryTrade
+        from django.db.models import Sum
+
+        active_trades = BinaryTrade.objects.filter(asset=asset, status='active', is_demo=False)
+        buy_volume = active_trades.filter(direction='buy').aggregate(
+            total=Sum('amount'))['total'] or Decimal('0')
+        sell_volume = active_trades.filter(direction='sell').aggregate(
+            total=Sum('amount'))['total'] or Decimal('0')
+        total_volume = buy_volume + sell_volume
+
+        if total_volume == 0:
+            return Decimal('0')
+
+        side_volume = buy_volume if direction == 'buy' else sell_volume
+        side_ratio = side_volume / total_volume  # 0.0 to 1.0
+
+        # If one side exceeds 70% of total volume, apply extra reduction
+        if side_ratio > Decimal('0.70'):
+            # Scale from 0% at 70% imbalance to 10% at 100% imbalance
+            extra = (side_ratio - Decimal('0.70')) / Decimal('0.30') * Decimal('10.00')
+            return min(extra, Decimal('10.00'))
+
+        return Decimal('0')
+
     def get_trade_parameters(self, current_price, direction):
         """
         Return all adjusted trade parameters.
@@ -87,6 +122,12 @@ class HouseEdgeCalculator:
         adjust_strike_price again in the caller.
         """
         adjusted_payout, edge = self.calculate_payout_reduction()
+
+        # Apply side imbalance reduction on top
+        imbalance_reduction = self.get_side_imbalance_factor(self.asset, direction)
+        adjusted_payout = max(adjusted_payout - imbalance_reduction, Decimal('50.00'))
+        edge += imbalance_reduction
+
         adjusted_strike = self.adjust_strike_price(current_price, direction)
         delay_ms = self.get_execution_delay_ms(edge)
 

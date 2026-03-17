@@ -164,12 +164,41 @@ class TradeExecutionService:
                     return None, "Unable to get final price"
 
                 # Determine outcome
+                # ATM (final == strike) → treat as loss (house keeps stake)
                 if trade.direction == 'buy':
                     won = final_price > trade.strike_price
                 else:
                     won = final_price < trade.strike_price
 
-                if won:
+                # Handle ATM (exact tie) based on config
+                is_atm = (final_price == trade.strike_price)
+                if is_atm:
+                    from .models import HouseEdgeConfig
+                    cfg = HouseEdgeConfig.objects.filter(is_active=True).first()
+                    atm_is_loss = cfg.atm_is_loss if cfg else True
+                    if not atm_is_loss:
+                        # Refund stake — neither win nor loss
+                        trade.status = 'won'
+                        trade.profit_loss = Decimal('0')
+                        payout = trade.amount  # just return stake
+                        if trade.is_demo:
+                            from demo.models import DemoAccount
+                            demo_account = DemoAccount.objects.select_for_update().get(user=trade.user)
+                            demo_account.balance += payout
+                            demo_account.save(update_fields=['balance'])
+                        else:
+                            from django.contrib.auth import get_user_model
+                            User = get_user_model()
+                            u = User.objects.select_for_update().get(pk=trade.user_id)
+                            u.balance += payout
+                            u.save(update_fields=['balance'])
+                        trade.final_price = final_price
+                        trade.closed_at = timezone.now()
+                        trade.save()
+                        # Skip normal win/loss block
+                        won = None
+
+                if won is True:
                     profit = trade.amount * (trade.adjusted_payout_percentage / Decimal('100'))
                     trade.status = 'won'
                     trade.profit_loss = profit
@@ -186,14 +215,15 @@ class TradeExecutionService:
                         u = User.objects.select_for_update().get(pk=trade.user_id)
                         u.balance += payout
                         u.save(update_fields=['balance'])
-                else:
+                elif won is False:
                     trade.status = 'lost'
                     trade.profit_loss = -trade.amount
                     # Stake was already deducted on open — nothing to do
 
-                trade.final_price = final_price
-                trade.closed_at = timezone.now()
-                trade.save()
+                if won is not None:
+                    trade.final_price = final_price
+                    trade.closed_at = timezone.now()
+                    trade.save()
 
         except Exception as e:
             return None, f"Error closing trade: {str(e)}"
@@ -209,35 +239,43 @@ class TradeExecutionService:
 
     @staticmethod
     def update_user_stats(trade):
-        """Update UserTradingStats after a real trade closes."""
-        stats, _ = UserTradingStats.objects.get_or_create(user=trade.user)
+        """Update UserTradingStats after a real trade closes. Uses F() to avoid race conditions."""
+        from django.db.models import F
+        from django.db import transaction as _tx
 
-        stats.total_trades += 1
-        stats.total_volume += trade.amount
+        with _tx.atomic():
+            stats, _ = UserTradingStats.objects.select_for_update().get_or_create(user=trade.user)
 
-        if trade.status == 'won':
-            stats.total_wins += 1
-            stats.current_win_streak += 1
-            stats.current_loss_streak = 0
+            stats.total_trades = F('total_trades') + 1
+            stats.total_volume = F('total_volume') + trade.amount
+
+            if trade.status == 'won':
+                stats.total_wins = F('total_wins') + 1
+                stats.current_win_streak = F('current_win_streak') + 1
+                stats.current_loss_streak = 0
+                stats.total_profit = F('total_profit') + trade.profit_loss
+            elif trade.status == 'lost':
+                stats.total_losses = F('total_losses') + 1
+                stats.current_loss_streak = F('current_loss_streak') + 1
+                stats.current_win_streak = 0
+                stats.total_loss = F('total_loss') + abs(trade.profit_loss)
+
+            stats.save()
+
+            # Refresh to get real values for derived fields
+            stats.refresh_from_db()
+            stats.net_profit = stats.total_profit - stats.total_loss
             stats.max_win_streak = max(stats.max_win_streak, stats.current_win_streak)
-            stats.total_profit += trade.profit_loss
-        elif trade.status == 'lost':
-            stats.total_losses += 1
-            stats.current_loss_streak += 1
-            stats.current_win_streak = 0
-            stats.total_loss += abs(trade.profit_loss)
 
-        stats.net_profit = stats.total_profit - stats.total_loss
+            # Flag suspiciously high win rates
+            if stats.total_trades >= 50:
+                win_rate = (stats.total_wins / stats.total_trades) * 100
+                if win_rate > 75 and not stats.is_flagged:
+                    stats.is_flagged = True
+                    stats.flag_reason = f"High win rate: {win_rate:.2f}% after {stats.total_trades} trades"
+                    stats.flagged_at = timezone.now()
 
-        # Flag suspiciously high win rates
-        if stats.total_trades >= 50:
-            win_rate = (stats.total_wins / stats.total_trades) * 100
-            if win_rate > 75 and not stats.is_flagged:
-                stats.is_flagged = True
-                stats.flag_reason = f"High win rate: {win_rate:.2f}% after {stats.total_trades} trades"
-                stats.flagged_at = timezone.now()
-
-        stats.save()
+            stats.save(update_fields=['net_profit', 'max_win_streak', 'is_flagged', 'flag_reason', 'flagged_at'])
 
     @staticmethod
     def close_expired_trades():
