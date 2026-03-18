@@ -19,10 +19,6 @@ class PlatformSettings(models.Model):
         default='support@growfund.com',
         help_text='Support email address'
     )
-    maintenance_mode = models.BooleanField(
-        default=False,
-        help_text='Enable to block non-admin access'
-    )
     
     # Transaction Limits
     min_deposit = models.DecimalField(

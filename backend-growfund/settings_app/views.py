@@ -110,7 +110,6 @@ class PublicSettingsView(APIView):
             'data': {
                 'platformName': settings.platform_name,
                 'platformEmail': settings.platform_email,
-                'maintenanceMode': settings.maintenance_mode,
                 'minDeposit': str(settings.min_deposit),
                 'maxDeposit': str(settings.max_deposit),
                 'minWithdrawal': str(settings.min_withdrawal),

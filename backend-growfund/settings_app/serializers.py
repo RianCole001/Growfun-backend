@@ -29,7 +29,6 @@ class PlatformSettingsSerializer(serializers.ModelSerializer):
     realEstatePremiumMin = serializers.DecimalField(source='real_estate_premium_min', max_digits=12, decimal_places=2)
     realEstateLuxuryMin = serializers.DecimalField(source='real_estate_luxury_min', max_digits=12, decimal_places=2)
     
-    maintenanceMode = serializers.BooleanField(source='maintenance_mode')
     emailNotifications = serializers.BooleanField(source='email_notifications')
     smsNotifications = serializers.BooleanField(source='sms_notifications')
     autoApproveDeposits = serializers.BooleanField(source='auto_approve_deposits')

@@ -58,7 +58,6 @@ MIDDLEWARE = [
     'accounts.middleware.AdminSecurityMiddleware',  # Admin security
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'settings_app.middleware.MaintenanceModeMiddleware',  # Maintenance mode check
 ]
 
 # Enable automatic slash appending for better URL handling

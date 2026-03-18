@@ -4,12 +4,12 @@ from .models import PlatformSettings, SettingsHistory
 
 @admin.register(PlatformSettings)
 class PlatformSettingsAdmin(admin.ModelAdmin):
-    list_display = ['platform_name', 'maintenance_mode', 'updated_at', 'updated_by']
+    list_display = ['platform_name', 'updated_at', 'updated_by']
     readonly_fields = ['updated_at', 'created_at', 'updated_by']
     
     fieldsets = (
         ('General Settings', {
-            'fields': ('platform_name', 'platform_email', 'maintenance_mode')
+            'fields': ('platform_name', 'platform_email')
         }),
         ('Transaction Limits', {
             'fields': ('min_deposit', 'max_deposit', 'min_withdrawal', 'max_withdrawal')

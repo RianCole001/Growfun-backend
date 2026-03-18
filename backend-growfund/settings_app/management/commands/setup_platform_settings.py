@@ -13,7 +13,6 @@ class Command(BaseCommand):
             defaults={
                 'platform_name': 'GrowFund',
                 'platform_email': 'support@growfund.com',
-                'maintenance_mode': False,
                 'min_deposit': Decimal('100.00'),
                 'max_deposit': Decimal('100000.00'),
                 'min_withdrawal': Decimal('50.00'),
@@ -49,7 +48,6 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'\nCurrent Settings:'))
         self.stdout.write(f'  Platform Name: {settings.platform_name}')
         self.stdout.write(f'  Support Email: {settings.platform_email}')
-        self.stdout.write(f'  Maintenance Mode: {settings.maintenance_mode}')
         self.stdout.write(f'  Min Deposit: ${settings.min_deposit}')
         self.stdout.write(f'  Max Deposit: ${settings.max_deposit}')
         self.stdout.write(f'  Min Withdrawal: ${settings.min_withdrawal}')
