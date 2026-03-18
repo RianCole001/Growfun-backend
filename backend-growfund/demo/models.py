@@ -35,6 +35,7 @@ class DemoInvestment(models.Model):
     amount = models.DecimalField(max_digits=15, decimal_places=2)
     quantity = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)  # For crypto
     price_at_purchase = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    current_price = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)  # Updated on portfolio fetch
     monthly_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)  # For plans
     duration_months = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
@@ -53,6 +54,9 @@ class DemoTransaction(models.Model):
         ('crypto_sell', 'Crypto Sale'),
         ('investment', 'Investment'),
         ('return', 'Investment Return'),
+        ('binary_trade_open', 'Binary Trade Open'),
+        ('binary_trade_win', 'Binary Trade Win'),
+        ('binary_trade_loss', 'Binary Trade Loss'),
     ]
     
     STATUS_CHOICES = [

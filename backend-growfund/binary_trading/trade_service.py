@@ -137,6 +137,21 @@ class TradeExecutionService:
                     user_total_profit=params['user_total_profit'],
                     is_demo=is_demo,
                 )
+
+                # Record demo trade open in DemoTransaction history
+                if is_demo:
+                    from demo.models import DemoAccount, DemoTransaction
+                    demo_acc = DemoAccount.objects.get(user=user)
+                    DemoTransaction.objects.create(
+                        demo_account=demo_acc,
+                        transaction_type='binary_trade_open',
+                        amount=amount,
+                        asset=asset.symbol,
+                        description=(
+                            f"Demo binary {direction.upper()} {asset.symbol} — "
+                            f"${amount:.2f} staked, expires in {expiry_seconds}s"
+                        ),
+                    )
         except Exception as e:
             return None, f"Failed to open trade: {str(e)}"
 
@@ -240,17 +255,18 @@ class TradeExecutionService:
             try:
                 from demo.models import DemoAccount, DemoTransaction
                 demo_acc = DemoAccount.objects.get(user=trade.user)
-                tx_type = 'return' if trade.status == 'won' else 'investment'
+                tx_type = 'binary_trade_win' if trade.status == 'won' else 'binary_trade_loss'
+                pnl = trade.profit_loss if trade.profit_loss else Decimal('0')
                 DemoTransaction.objects.create(
                     demo_account=demo_acc,
                     transaction_type=tx_type,
-                    amount=abs(trade.profit_loss) if trade.profit_loss else trade.amount,
+                    amount=abs(pnl) if pnl != 0 else trade.amount,
                     asset=trade.asset.symbol,
                     description=(
                         f"Demo binary {trade.direction.upper()} {trade.asset.symbol} — "
                         f"{'WON' if trade.status == 'won' else 'LOST'} "
-                        f"${abs(trade.profit_loss):.2f}"
-                    )
+                        f"${abs(pnl):.2f}"
+                    ),
                 )
             except Exception as e:
                 print(f"⚠️ Failed to record demo transaction for trade {trade_id}: {e}")

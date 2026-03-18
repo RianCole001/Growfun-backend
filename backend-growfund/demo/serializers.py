@@ -13,13 +13,14 @@ class DemoInvestmentSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     quantity = serializers.DecimalField(max_digits=12, decimal_places=8, read_only=True)
     price_at_purchase = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    current_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     monthly_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
     
     class Meta:
         model = DemoInvestment
         fields = [
-            'id', 'investment_type', 'asset_name', 'amount', 'quantity', 
-            'price_at_purchase', 'monthly_rate', 'duration_months', 
+            'id', 'investment_type', 'asset_name', 'amount', 'quantity',
+            'price_at_purchase', 'current_price', 'monthly_rate', 'duration_months',
             'status', 'created_at', 'updated_at'
         ]
 
