@@ -13,9 +13,15 @@ class DemoInvestmentSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     quantity = serializers.DecimalField(max_digits=12, decimal_places=8, read_only=True)
     price_at_purchase = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    current_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     monthly_rate = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
-    
+    current_price = serializers.SerializerMethodField()
+
+    def get_current_price(self, obj):
+        try:
+            return str(obj.current_price) if obj.current_price is not None else None
+        except Exception:
+            return None
+
     class Meta:
         model = DemoInvestment
         fields = [

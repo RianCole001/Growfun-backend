@@ -34,6 +34,24 @@ def _to_decimal(value, default=Decimal('0')):
         return default
 
 
+def _has_current_price_column():
+    """Check if the current_price column exists (migration may not have run yet)."""
+    from django.db import connection
+    columns = [col.name for col in connection.introspection.get_table_description(
+        connection.cursor(), 'demo_demoinvestment'
+    )]
+    return 'current_price' in columns
+
+
+def _safe_save_current_price(inv, price):
+    """Save current_price only if the column exists in the DB."""
+    try:
+        inv.current_price = price
+        inv.save(update_fields=['current_price'])
+    except Exception:
+        pass  # Column doesn't exist yet — migration pending
+
+
 def _get_live_crypto_price(coin: str):
     import requests
     try:
@@ -143,8 +161,9 @@ def demo_buy_crypto(request):
                 amount=amount,
                 quantity=quantity,
                 price_at_purchase=price,
-                current_price=price,
             )
+            # Set current_price safely (column may not exist if migration pending)
+            _safe_save_current_price(investment, price)
             tx = DemoTransaction.objects.create(
                 demo_account=demo_acc,
                 transaction_type='crypto_buy',
@@ -205,13 +224,13 @@ def demo_sell_crypto(request):
                 if inv.quantity <= remaining:
                     remaining -= inv.quantity
                     inv.status = 'completed'
-                    inv.current_price = price
-                    inv.save()
+                    inv.save(update_fields=['status'])
+                    _safe_save_current_price(inv, price)
                 else:
                     inv.quantity -= remaining
                     inv.amount = inv.quantity * inv.price_at_purchase
-                    inv.current_price = price
-                    inv.save()
+                    inv.save(update_fields=['quantity', 'amount'])
+                    _safe_save_current_price(inv, price)
                     remaining = Decimal('0')
 
             demo_acc.balance += sell_amount
@@ -465,8 +484,7 @@ def demo_investments(request):
 
     for inv in investments:
         if inv.investment_type == 'crypto' and inv.asset_name in live_prices:
-            inv.current_price = live_prices[inv.asset_name]
-            inv.save(update_fields=['current_price'])
+            _safe_save_current_price(inv, live_prices[inv.asset_name])
 
     serializer = DemoInvestmentSerializer(investments, many=True)
     return Response({'success': True, 'data': serializer.data, 'count': len(investments)})
@@ -498,8 +516,7 @@ def demo_portfolio(request):
             lp = live_prices.get(inv.asset_name)
             if lp and inv.quantity:
                 current_val = inv.quantity * lp
-                inv.current_price = lp
-                inv.save(update_fields=['current_price'])
+                _safe_save_current_price(inv, lp)
                 crypto_value += current_val
             else:
                 crypto_value += inv.amount
