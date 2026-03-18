@@ -190,6 +190,12 @@ def get_user_stats(request):
     """
     is_demo = request.GET.get('is_demo', 'false').lower() == 'true'
 
+    empty_stats = {
+        'total_trades': 0, 'total_wins': 0, 'total_losses': 0,
+        'current_win_streak': 0, 'max_win_streak': 0, 'win_rate': 0,
+        'total_profit': '0.00', 'total_loss': '0.00',
+        'net_profit': '0.00', 'total_volume': '0.00',
+    }
     try:
         if is_demo:
             from .models import DemoTradingStats
@@ -201,19 +207,14 @@ def get_user_stats(request):
         return Response({
             'success': True,
             'is_demo': is_demo,
-            'stats': serializer.data
+            'stats': serializer.data,
         })
-    except Exception as e:
-        # Table may not exist yet if migration is pending
+    except Exception:
+        # DemoTradingStats table may not exist yet — migration pending on Render
         return Response({
             'success': True,
             'is_demo': is_demo,
-            'stats': {
-                'total_trades': 0, 'total_wins': 0, 'total_losses': 0,
-                'current_win_streak': 0, 'max_win_streak': 0, 'win_rate': 0,
-                'total_profit': '0.00', 'total_loss': '0.00',
-                'net_profit': '0.00', 'total_volume': '0.00',
-            }
+            'stats': empty_stats,
         })
 
 

@@ -140,18 +140,21 @@ class TradeExecutionService:
 
                 # Record demo trade open in DemoTransaction history
                 if is_demo:
-                    from demo.models import DemoAccount, DemoTransaction
-                    demo_acc = DemoAccount.objects.get(user=user)
-                    DemoTransaction.objects.create(
-                        demo_account=demo_acc,
-                        transaction_type='binary_trade_open',
-                        amount=amount,
-                        asset=asset.symbol,
-                        description=(
-                            f"Demo binary {direction.upper()} {asset.symbol} — "
-                            f"${amount:.2f} staked, expires in {expiry_seconds}s"
-                        ),
-                    )
+                    try:
+                        from demo.models import DemoAccount, DemoTransaction
+                        demo_acc = DemoAccount.objects.get(user=user)
+                        DemoTransaction.objects.create(
+                            demo_account=demo_acc,
+                            transaction_type='binary_trade_open',
+                            amount=amount,
+                            asset=asset.symbol,
+                            description=(
+                                f"Demo binary {direction.upper()} {asset.symbol} — "
+                                f"${amount:.2f} staked, expires in {expiry_seconds}s"
+                            ),
+                        )
+                    except Exception as e:
+                        print(f"⚠️ Failed to record demo trade open transaction: {e}")
         except Exception as e:
             return None, f"Failed to open trade: {str(e)}"
 

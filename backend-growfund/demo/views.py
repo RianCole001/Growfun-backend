@@ -13,6 +13,7 @@ from .serializers import DemoAccountSerializer, DemoInvestmentSerializer, DemoTr
 # ---------------------------------------------------------------------------
 
 def _get_or_create_demo_account(user):
+    """Get or create a demo account, recording the initial deposit transaction."""
     demo_acc, created = DemoAccount.objects.get_or_create(
         user=user,
         defaults={'balance': Decimal('10000.00')}
@@ -34,36 +35,121 @@ def _to_decimal(value, default=Decimal('0')):
         return default
 
 
-def _has_current_price_column():
-    """Check if the current_price column exists (migration may not have run yet)."""
-    from django.db import connection
-    columns = [col.name for col in connection.introspection.get_table_description(
-        connection.cursor(), 'demo_demoinvestment'
-    )]
-    return 'current_price' in columns
+# ---------------------------------------------------------------------------
+# DB column existence checks (cached per process lifetime)
+# ---------------------------------------------------------------------------
+
+_COL_CACHE = {}
 
 
-def _safe_save_current_price(inv, price):
-    """Save current_price only if the column exists in the DB."""
+def _column_exists(table, column):
+    """Return True if `column` exists in `table`. Result is cached."""
+    key = f'{table}.{column}'
+    if key in _COL_CACHE:
+        return _COL_CACHE[key]
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cols = [c.name for c in connection.introspection.get_table_description(cursor, table)]
+        _COL_CACHE[key] = column in cols
+    except Exception:
+        _COL_CACHE[key] = False
+    return _COL_CACHE[key]
+
+
+def _has_current_price_col():
+    return _column_exists('demo_demoinvestment', 'current_price')
+
+
+def _invalidate_col_cache():
+    """Call this after running migrations so the cache refreshes."""
+    _COL_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# Safe investment helpers — handle missing current_price column gracefully
+# ---------------------------------------------------------------------------
+
+def _investments_qs(demo_acc, **filters):
+    """
+    Return a DemoInvestment queryset for this account.
+    Defers current_price if the column doesn't exist yet.
+    """
+    qs = demo_acc.investments.filter(**filters)
+    if not _has_current_price_col():
+        qs = qs.defer('current_price')
+    return qs
+
+
+def _create_investment(**kwargs):
+    """
+    Create a DemoInvestment row.
+    Strips current_price from kwargs if the column doesn't exist yet.
+    On unexpected DB error mentioning current_price, retries without it.
+    """
+    if not _has_current_price_col():
+        kwargs.pop('current_price', None)
+    try:
+        return DemoInvestment.objects.create(**kwargs)
+    except Exception as exc:
+        if 'current_price' in str(exc).lower():
+            _COL_CACHE.pop('demo_demoinvestment.current_price', None)
+            kwargs.pop('current_price', None)
+            return DemoInvestment.objects.create(**kwargs)
+        raise
+
+
+def _update_current_price(inv, price):
+    """
+    Persist the live price on an investment row.
+    No-op if the column doesn't exist yet.
+    """
+    if not _has_current_price_col():
+        return
     try:
         inv.current_price = price
         inv.save(update_fields=['current_price'])
     except Exception:
-        pass  # Column doesn't exist yet — migration pending
+        pass
 
+
+# ---------------------------------------------------------------------------
+# Live price fetch
+# ---------------------------------------------------------------------------
 
 def _get_live_crypto_price(coin: str):
+    """
+    Fetch live USD price for a coin.
+    Admin-controlled coins (EXACOIN, OPTCOIN) come from AdminCryptoPrice.
+    All others come from CoinGecko.
+    Returns Decimal or None.
+    """
     import requests
+
+    # Admin-controlled coins first
     try:
         from investments.admin_models import AdminCryptoPrice
         admin_price = AdminCryptoPrice.objects.get(coin=coin, is_active=True)
-        return admin_price.buy_price
+        return Decimal(str(admin_price.buy_price))
     except Exception:
         pass
 
     COINGECKO_IDS = {
-        'BTC': 'bitcoin', 'ETH': 'ethereum', 'BNB': 'binancecoin',
-        'ADA': 'cardano', 'SOL': 'solana', 'DOT': 'polkadot', 'USDT': 'tether',
+        'BTC': 'bitcoin',
+        'ETH': 'ethereum',
+        'BNB': 'binancecoin',
+        'ADA': 'cardano',
+        'SOL': 'solana',
+        'DOT': 'polkadot',
+        'USDT': 'tether',
+        'XRP': 'ripple',
+        'DOGE': 'dogecoin',
+        'MATIC': 'matic-network',
+        'AVAX': 'avalanche-2',
+        'LINK': 'chainlink',
+        'LTC': 'litecoin',
+        'UNI': 'uniswap',
+        'ATOM': 'cosmos',
     }
     gecko_id = COINGECKO_IDS.get(coin)
     if gecko_id:
@@ -74,8 +160,7 @@ def _get_live_crypto_price(coin: str):
                 timeout=8,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                price = data.get(gecko_id, {}).get('usd')
+                price = resp.json().get(gecko_id, {}).get('usd')
                 if price:
                     return Decimal(str(price))
         except Exception:
@@ -84,18 +169,22 @@ def _get_live_crypto_price(coin: str):
 
 
 # ---------------------------------------------------------------------------
-# Account
+# Account endpoints
 # ---------------------------------------------------------------------------
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def demo_account(request):
-    """GET — return account (auto-creates). POST — reset to $10,000."""
+    """
+    GET  — return demo account info (auto-creates if missing).
+    POST — reset account to $10,000 and clear all investments/transactions.
+    """
     demo_acc = _get_or_create_demo_account(request.user)
 
     if request.method == 'GET':
         return Response({'success': True, 'data': DemoAccountSerializer(demo_acc).data})
 
+    # POST: reset
     with transaction.atomic():
         demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
         demo_acc.balance = Decimal('10000.00')
@@ -119,42 +208,54 @@ def demo_account(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def demo_balance(request):
+    """Return current demo balance."""
     demo_acc = _get_or_create_demo_account(request.user)
     return Response({'success': True, 'data': {'balance': str(demo_acc.balance)}})
 
 
 # ---------------------------------------------------------------------------
-# Crypto
+# Crypto endpoints
 # ---------------------------------------------------------------------------
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def demo_buy_crypto(request):
-    """Buy crypto. Body: { coin, amount }"""
+    """
+    Buy cryptocurrency with demo funds.
+    Body: { coin: "BTC", amount: 100 }
+    Price is fetched server-side — never trust client-supplied price.
+    """
     coin = request.data.get('coin', '').upper().strip()
     amount = _to_decimal(request.data.get('amount'))
 
     if not coin:
         return Response({'success': False, 'error': 'coin is required'}, status=status.HTTP_400_BAD_REQUEST)
     if amount <= 0:
-        return Response({'success': False, 'error': 'amount must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
 
     price = _get_live_crypto_price(coin)
     if not price or price <= 0:
-        return Response({'success': False, 'error': f'Unable to fetch live price for {coin}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'success': False, 'error': f'Unable to fetch live price for {coin}. Check coin symbol.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     quantity = amount / price
 
     try:
         with transaction.atomic():
             demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
+
             if demo_acc.balance < amount:
-                return Response({'success': False, 'error': 'Insufficient demo balance'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'success': False, 'error': f'Insufficient demo balance. Available: ${demo_acc.balance:.2f}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             demo_acc.balance -= amount
             demo_acc.save(update_fields=['balance'])
 
-            investment = DemoInvestment.objects.create(
+            investment = _create_investment(
                 demo_account=demo_acc,
                 investment_type='crypto',
                 asset_name=coin,
@@ -162,8 +263,9 @@ def demo_buy_crypto(request):
                 quantity=quantity,
                 price_at_purchase=price,
             )
-            # Set current_price safely (column may not exist if migration pending)
-            _safe_save_current_price(investment, price)
+            # Persist live price if column exists
+            _update_current_price(investment, price)
+
             tx = DemoTransaction.objects.create(
                 demo_account=demo_acc,
                 transaction_type='crypto_buy',
@@ -171,66 +273,80 @@ def demo_buy_crypto(request):
                 asset=coin,
                 quantity=quantity,
                 price=price,
-                description=f'Bought {quantity:.6f} {coin} at ${price:.2f}',
+                description=f'Bought {float(quantity):.6f} {coin} @ ${float(price):.2f}',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'investment': DemoInvestmentSerializer(investment).data,
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'investment': DemoInvestmentSerializer(investment).data,
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        }, status=status.HTTP_201_CREATED)
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def demo_sell_crypto(request):
-    """Sell crypto (FIFO). Body: { coin, quantity }"""
+    """
+    Sell cryptocurrency (FIFO across holdings).
+    Body: { coin: "BTC", quantity: 0.001 }
+    """
     coin = request.data.get('coin', '').upper().strip()
     quantity = _to_decimal(request.data.get('quantity'))
 
     if not coin:
         return Response({'success': False, 'error': 'coin is required'}, status=status.HTTP_400_BAD_REQUEST)
     if quantity <= 0:
-        return Response({'success': False, 'error': 'quantity must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'quantity must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
 
     price = _get_live_crypto_price(coin)
     if not price or price <= 0:
-        return Response({'success': False, 'error': f'Unable to fetch live price for {coin}'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'success': False, 'error': f'Unable to fetch live price for {coin}'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     sell_amount = quantity * price
 
     try:
         with transaction.atomic():
             demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
-            investments = list(demo_acc.investments.filter(
-                investment_type='crypto', asset_name=coin, status='active',
-            ).order_by('created_at'))
 
-            total_available = sum(inv.quantity for inv in investments)
+            # Fetch holdings — defer current_price if column missing
+            holdings = list(
+                _investments_qs(demo_acc, investment_type='crypto', asset_name=coin, status='active')
+                .order_by('created_at')
+            )
+
+            total_available = sum(inv.quantity for inv in holdings if inv.quantity)
             if total_available < quantity:
                 return Response({
                     'success': False,
-                    'error': f'Insufficient {coin}. Available: {total_available:.6f}',
+                    'error': f'Insufficient {coin}. Available: {float(total_available):.6f}',
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            # FIFO sell
             remaining = quantity
-            for inv in investments:
+            for inv in holdings:
                 if remaining <= 0:
                     break
                 if inv.quantity <= remaining:
                     remaining -= inv.quantity
                     inv.status = 'completed'
                     inv.save(update_fields=['status'])
-                    _safe_save_current_price(inv, price)
+                    _update_current_price(inv, price)
                 else:
                     inv.quantity -= remaining
                     inv.amount = inv.quantity * inv.price_at_purchase
                     inv.save(update_fields=['quantity', 'amount'])
-                    _safe_save_current_price(inv, price)
+                    _update_current_price(inv, price)
                     remaining = Decimal('0')
 
             demo_acc.balance += sell_amount
@@ -243,27 +359,31 @@ def demo_sell_crypto(request):
                 asset=coin,
                 quantity=quantity,
                 price=price,
-                description=f'Sold {quantity:.6f} {coin} at ${price:.2f}',
+                description=f'Sold {float(quantity):.6f} {coin} @ ${float(price):.2f}',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        })
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------------------------------------------------------------------------
-# Capital Plans
+# Capital Plan endpoints
 # ---------------------------------------------------------------------------
 
 PLAN_RATES = {
-    'basic': {'rate': Decimal('20'), 'name': 'Basic Capital Plan'},
+    'basic':    {'rate': Decimal('20'), 'name': 'Basic Capital Plan'},
     'standard': {'rate': Decimal('30'), 'name': 'Standard Capital Plan'},
-    'advance': {'rate': Decimal('40'), 'name': 'Advance Capital Plan'},
+    'advance':  {'rate': Decimal('40'), 'name': 'Advance Capital Plan'},
 }
 
 
@@ -272,16 +392,19 @@ PLAN_RATES = {
 def demo_invest_capital_plan(request):
     """
     Invest in a demo capital plan.
-    Body: { plan_type: basic|standard|advance, amount, months }
+    Body: { plan_type: "basic"|"standard"|"advance", amount: 500, months: 6 }
     """
     plan_type = request.data.get('plan_type', '').lower().strip()
     amount = _to_decimal(request.data.get('amount'))
     months_raw = request.data.get('months')
 
     if plan_type not in PLAN_RATES:
-        return Response({'success': False, 'error': 'plan_type must be basic, standard, or advance'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'success': False, 'error': 'plan_type must be basic, standard, or advance'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if amount <= 0:
-        return Response({'success': False, 'error': 'amount must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         months = int(months_raw)
         if months <= 0:
@@ -294,13 +417,17 @@ def demo_invest_capital_plan(request):
     try:
         with transaction.atomic():
             demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
+
             if demo_acc.balance < amount:
-                return Response({'success': False, 'error': 'Insufficient demo balance'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'success': False, 'error': f'Insufficient demo balance. Available: ${demo_acc.balance:.2f}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             demo_acc.balance -= amount
             demo_acc.save(update_fields=['balance'])
 
-            investment = DemoInvestment.objects.create(
+            investment = _create_investment(
                 demo_account=demo_acc,
                 investment_type='capital_plan',
                 asset_name=plan['name'],
@@ -313,28 +440,32 @@ def demo_invest_capital_plan(request):
                 transaction_type='investment',
                 amount=amount,
                 asset=plan['name'],
-                description=f'Demo {plan["name"]} — {months} months at {plan["rate"]}%/month',
+                description=f'Demo {plan["name"]} — {months} months @ {plan["rate"]}%/month',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'investment': DemoInvestmentSerializer(investment).data,
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'investment': DemoInvestmentSerializer(investment).data,
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        }, status=status.HTTP_201_CREATED)
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------------------------------------------------------------------------
-# Real Estate
+# Real Estate endpoints
 # ---------------------------------------------------------------------------
 
 PROPERTY_TYPES = {
-    'starter': {'rate': Decimal('8'), 'name': 'Starter Property', 'months': 12},
+    'starter': {'rate': Decimal('8'),  'name': 'Starter Property', 'months': 12},
     'premium': {'rate': Decimal('12'), 'name': 'Premium Property', 'months': 12},
-    'luxury': {'rate': Decimal('18'), 'name': 'Luxury Estate', 'months': 12},
+    'luxury':  {'rate': Decimal('18'), 'name': 'Luxury Estate',    'months': 12},
 }
 
 
@@ -343,28 +474,35 @@ PROPERTY_TYPES = {
 def demo_invest_real_estate(request):
     """
     Invest in a demo real estate property.
-    Body: { property_type: starter|premium|luxury, amount }
+    Body: { property_type: "starter"|"premium"|"luxury", amount: 1000 }
     """
     property_type = request.data.get('property_type', '').lower().strip()
     amount = _to_decimal(request.data.get('amount'))
 
     if property_type not in PROPERTY_TYPES:
-        return Response({'success': False, 'error': 'property_type must be starter, premium, or luxury'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'success': False, 'error': 'property_type must be starter, premium, or luxury'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     if amount <= 0:
-        return Response({'success': False, 'error': 'amount must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
 
     prop = PROPERTY_TYPES[property_type]
 
     try:
         with transaction.atomic():
             demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
+
             if demo_acc.balance < amount:
-                return Response({'success': False, 'error': 'Insufficient demo balance'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'success': False, 'error': f'Insufficient demo balance. Available: ${demo_acc.balance:.2f}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             demo_acc.balance -= amount
             demo_acc.save(update_fields=['balance'])
 
-            investment = DemoInvestment.objects.create(
+            investment = _create_investment(
                 demo_account=demo_acc,
                 investment_type='real_estate',
                 asset_name=prop['name'],
@@ -379,27 +517,32 @@ def demo_invest_real_estate(request):
                 asset=prop['name'],
                 description=f'Demo {prop["name"]} — {prop["rate"]}%/month for {prop["months"]} months',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'investment': DemoInvestmentSerializer(investment).data,
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'investment': DemoInvestmentSerializer(investment).data,
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        }, status=status.HTTP_201_CREATED)
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------------------------------------------------------------------------
-# Generic invest (backward compat)
+# Generic invest (backward compatibility)
 # ---------------------------------------------------------------------------
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def demo_invest(request):
     """
-    Generic demo investment. Prefer the specific endpoints above.
+    Generic demo investment endpoint (kept for backward compatibility).
+    Prefer the specific endpoints: /capital-plan/ or /real-estate/
     Body: { type, name, amount, rate (optional), months (optional) }
     """
     investment_type = request.data.get('type', 'capital_plan')
@@ -415,18 +558,22 @@ def demo_invest(request):
         duration_months = None
 
     if amount <= 0:
-        return Response({'success': False, 'error': 'amount must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():
             demo_acc = DemoAccount.objects.select_for_update().get(user=request.user)
+
             if demo_acc.balance < amount:
-                return Response({'success': False, 'error': 'Insufficient demo balance'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'success': False, 'error': f'Insufficient demo balance. Available: ${demo_acc.balance:.2f}'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             demo_acc.balance -= amount
             demo_acc.save(update_fields=['balance'])
 
-            investment = DemoInvestment.objects.create(
+            investment = _create_investment(
                 demo_account=demo_acc,
                 investment_type=investment_type,
                 asset_name=asset_name,
@@ -441,41 +588,45 @@ def demo_invest(request):
                 asset=asset_name,
                 description=f'Demo investment in {asset_name}',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'investment': DemoInvestmentSerializer(investment).data,
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'investment': DemoInvestmentSerializer(investment).data,
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        }, status=status.HTTP_201_CREATED)
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ---------------------------------------------------------------------------
-# Portfolio & Transactions
+# Portfolio & history endpoints
 # ---------------------------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def demo_investments(request):
     """
-    Get all active demo investments.
-    Crypto holdings get live price updated on each fetch.
-    Query params: ?type=crypto|capital_plan|real_estate (optional filter)
+    List all active demo investments.
+    Crypto holdings get live prices refreshed on each call.
+    Query params: ?type=crypto|capital_plan|real_estate
     """
     demo_acc = _get_or_create_demo_account(request.user)
     inv_type = request.GET.get('type')
 
-    qs = demo_acc.investments.filter(status='active')
+    filters = {'status': 'active'}
     if inv_type:
-        qs = qs.filter(investment_type=inv_type)
+        filters['investment_type'] = inv_type
 
-    investments = list(qs)
+    investments = list(_investments_qs(demo_acc, **filters))
 
-    # Update live prices for crypto
-    coins = set(inv.asset_name for inv in investments if inv.investment_type == 'crypto')
+    # Refresh live prices for crypto holdings
+    coins = {inv.asset_name for inv in investments if inv.investment_type == 'crypto'}
     live_prices = {}
     for coin in coins:
         p = _get_live_crypto_price(coin)
@@ -484,10 +635,13 @@ def demo_investments(request):
 
     for inv in investments:
         if inv.investment_type == 'crypto' and inv.asset_name in live_prices:
-            _safe_save_current_price(inv, live_prices[inv.asset_name])
+            _update_current_price(inv, live_prices[inv.asset_name])
 
-    serializer = DemoInvestmentSerializer(investments, many=True)
-    return Response({'success': True, 'data': serializer.data, 'count': len(investments)})
+    return Response({
+        'success': True,
+        'data': DemoInvestmentSerializer(investments, many=True).data,
+        'count': len(investments),
+    })
 
 
 @api_view(['GET'])
@@ -495,12 +649,13 @@ def demo_investments(request):
 def demo_portfolio(request):
     """
     Full portfolio summary: balance + all active investments with live values.
+    Returns totals broken down by asset class.
     """
     demo_acc = _get_or_create_demo_account(request.user)
-    investments = list(demo_acc.investments.filter(status='active'))
+    investments = list(_investments_qs(demo_acc, status='active'))
 
-    # Fetch live prices for all crypto
-    coins = set(inv.asset_name for inv in investments if inv.investment_type == 'crypto')
+    # Fetch live prices for all crypto holdings
+    coins = {inv.asset_name for inv in investments if inv.investment_type == 'crypto'}
     live_prices = {}
     for coin in coins:
         p = _get_live_crypto_price(coin)
@@ -516,9 +671,10 @@ def demo_portfolio(request):
             lp = live_prices.get(inv.asset_name)
             if lp and inv.quantity:
                 current_val = inv.quantity * lp
-                _safe_save_current_price(inv, lp)
+                _update_current_price(inv, lp)
                 crypto_value += current_val
             else:
+                # Fall back to purchase amount if price unavailable
                 crypto_value += inv.amount
         elif inv.investment_type == 'capital_plan':
             plan_value += inv.amount
@@ -546,13 +702,20 @@ def demo_portfolio(request):
 @permission_classes([IsAuthenticated])
 def demo_transactions(request):
     """
-    Get demo transaction history.
-    Query params: ?limit=50&offset=0&type=crypto_buy (optional filters)
+    Demo transaction history with pagination and optional type filter.
+    Query params: ?limit=50&offset=0&type=crypto_buy
     """
     demo_acc = _get_or_create_demo_account(request.user)
 
-    limit = min(int(request.GET.get('limit', 50)), 200)
-    offset = int(request.GET.get('offset', 0))
+    try:
+        limit = min(int(request.GET.get('limit', 50)), 200)
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = int(request.GET.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+
     tx_type = request.GET.get('type')
 
     qs = demo_acc.transactions.all()
@@ -560,13 +723,12 @@ def demo_transactions(request):
         qs = qs.filter(transaction_type=tx_type)
 
     total = qs.count()
-    txs = qs[offset:offset + limit]
-    serializer = DemoTransactionSerializer(txs, many=True)
+    txs = list(qs[offset:offset + limit])
 
     return Response({
         'success': True,
-        'data': serializer.data,
-        'count': len(serializer.data),
+        'data': DemoTransactionSerializer(txs, many=True).data,
+        'count': len(txs),
         'total': total,
     })
 
@@ -574,10 +736,13 @@ def demo_transactions(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def demo_deposit(request):
-    """Add virtual funds to demo account. Body: { amount }"""
+    """
+    Add virtual funds to demo account.
+    Body: { amount: 500 }
+    """
     amount = _to_decimal(request.data.get('amount'))
     if amount <= 0:
-        return Response({'success': False, 'error': 'amount must be > 0'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'success': False, 'error': 'amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():
@@ -588,14 +753,18 @@ def demo_deposit(request):
                 demo_account=demo_acc,
                 transaction_type='deposit',
                 amount=amount,
-                description=f'Demo deposit of ${amount}',
+                description=f'Demo deposit of ${float(amount):.2f}',
             )
-            return Response({
-                'success': True,
-                'data': {
-                    'new_balance': str(demo_acc.balance),
-                    'transaction': DemoTransactionSerializer(tx).data,
-                }
-            })
+
+        return Response({
+            'success': True,
+            'data': {
+                'new_balance': str(demo_acc.balance),
+                'transaction': DemoTransactionSerializer(tx).data,
+            }
+        })
+
     except DemoAccount.DoesNotExist:
         return Response({'success': False, 'error': 'Demo account not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
