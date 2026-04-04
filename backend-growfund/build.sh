@@ -32,6 +32,9 @@ else:
     print('Superuser already exists, skipping.')
 "
 
+echo "⚙️ Setting up platform settings..."
+python manage.py setup_platform_settings || echo "⚠️ Platform settings setup skipped"
+
 echo "💰 Setting up crypto prices..."
 python manage.py setup_crypto_prices || echo "⚠️ Crypto prices setup skipped"
 
