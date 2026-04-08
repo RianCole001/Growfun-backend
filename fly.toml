@@ -1,0 +1,29 @@
+app = 'growfundappp'
+primary_region = 'lax'
+
+[build]
+  dockerfile = "backend-growfund/Dockerfile"
+  dockerignore_file = "backend-growfund/.dockerignore"
+
+[build.args]
+  BUILDKIT_CONTEXT_KEEP_GIT_DIR = "1"
+
+[env]
+  PORT = "8000"
+  PYTHONUNBUFFERED = "1"
+  DJANGO_SETTINGS_MODULE = "growfund.settings"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+
+[deploy]
+  release_command = "bash /app/fly_release.sh"
