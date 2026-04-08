@@ -204,8 +204,9 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'https://growfun-backend.onrender.com',
-    'https://growfund-dashboard.onrender.com',  # Original frontend
-    'https://dashboard-yfb8.onrender.com',      # Current frontend
+    'https://growfund-dashboard.onrender.com',
+    'https://dashboard-yfb8.onrender.com',
+    'https://growfundappp.fly.dev',
 ]
 
 # Add ngrok URLs dynamically if in DEBUG mode
