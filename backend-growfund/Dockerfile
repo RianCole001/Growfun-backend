@@ -29,18 +29,5 @@ RUN python manage.py collectstatic --noinput || true
 # Expose port
 EXPOSE 8000
 
-# Run migrations and start server
-CMD python manage.py migrate --noinput && \
-    python manage.py shell -c "
-from django.contrib.auth import get_user_model
-import os
-User = get_user_model()
-email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@growfund.com')
-password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'Admin1234!')
-if not User.objects.filter(is_staff=True).exists():
-    User.objects.create_superuser(email=email, password=password, first_name='Admin', last_name='GrowFund', is_verified=True)
-    print('Superuser created')
-" && \
-    python manage.py setup_platform_settings && \
-    python manage.py setup_crypto_prices && \
-    gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 120 growfund.wsgi:application
+# Run gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "growfund.wsgi:application"]
