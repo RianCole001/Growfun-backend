@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('settings_app', '0003_platformsettings_capital_advance_min_and_more'),
+        ('settings_app', '0004_platformsettings_capital_advance_min_and_more'),
     ]
 
     operations = [
