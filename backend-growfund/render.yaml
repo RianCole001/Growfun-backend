@@ -1,13 +1,8 @@
-databases:
-  - name: growfund-db
-    databaseName: growfund
-    user: growfund
-    plan: free
-
 services:
   - type: web
     name: growfund-backend
     env: python
+    rootDir: backend-growfund
     buildCommand: bash build.sh
     startCommand: gunicorn growfund.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120
     envVars:
