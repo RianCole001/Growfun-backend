@@ -206,7 +206,6 @@ CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='').split(',') if 
     'https://growfun-backend.onrender.com',
     'https://growfund-dashboard.onrender.com',
     'https://dashboard-yfb8.onrender.com',
-    'https://growfundappp.fly.dev',
 ]
 
 # Add ngrok URLs dynamically if in DEBUG mode
