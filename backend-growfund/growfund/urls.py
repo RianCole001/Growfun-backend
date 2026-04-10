@@ -12,8 +12,13 @@ from rest_framework.response import Response
 import traceback
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@api_view(['GET'])
+@permission_classes([])
+def health_check(request):
+    return Response({'status': 'ok'})
+
+
+
 def run_migrations(request):
     """Admin-only: run pending migrations on the live server."""
     if not (request.user.is_staff or request.user.is_superuser):
@@ -90,6 +95,7 @@ urlpatterns = [
     path('api/settings/', include('settings_app.urls')),
     path('api/binary/', include('binary_trading.urls')),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/health/', health_check, name='health-check'),
     path('api/admin/run-migrations/', run_migrations, name='run-migrations'),
     path('api/admin/db-check/', db_check, name='db-check'),
 ]
