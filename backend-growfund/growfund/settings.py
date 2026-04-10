@@ -242,6 +242,10 @@ CELERY_TIMEZONE = TIME_ZONE
 # CoinGecko API
 COINGECKO_API_KEY = config('COINGECKO_API_KEY', default='')
 
+# USDT TRC20 Configuration
+USDT_WALLET_ADDRESS = config('USDT_WALLET_ADDRESS', default='TNGbuN1FPWJDsxd9wtoyoAqeRvCVuPuDXm')
+TRONGRID_API_KEY = config('TRONGRID_API_KEY', default='')
+
 # Korapay Configuration
 KORAPAY_BASE_URL = config('KORAPAY_BASE_URL', default='https://api.korapay.com/merchant/api/v1')
 KORAPAY_SECRET_KEY = config('KORAPAY_SECRET_KEY', default='')

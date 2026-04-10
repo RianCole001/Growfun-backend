@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views, korapay_views, admin_views, expresspay_views
+from .usdt_views import initiate_usdt_deposit, check_deposit_status
 
 app_name = 'transactions'
 
@@ -26,6 +27,10 @@ urlpatterns = [
     path('korapay/webhook/', korapay_views.korapay_webhook, name='korapay-webhook'),
     path('korapay/banks/', korapay_views.korapay_get_banks, name='korapay-banks'),
     path('korapay/resolve-account/', korapay_views.korapay_resolve_account, name='korapay-resolve-account'),
+
+    # USDT TRC20 deposits
+    path('usdt/initiate/', initiate_usdt_deposit, name='usdt-initiate'),
+    path('usdt/status/<uuid:deposit_id>/', check_deposit_status, name='usdt-status'),
 
     # ExpressPay Ghana endpoints
     path('expresspay/deposit/', expresspay_views.expresspay_deposit, name='expresspay-deposit'),
