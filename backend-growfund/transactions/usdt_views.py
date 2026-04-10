@@ -5,28 +5,25 @@ from django.utils import timezone
 from datetime import timedelta
 from decimal import Decimal
 from .usdt_models import USDTDepositRequest
-from .usdt_utils import generate_unique_amount
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def initiate_usdt_deposit(request):
     base_amount = float(request.data.get('amount', 0))
-    if base_amount < 5:
-        return Response({'error': 'Minimum deposit is $5'}, status=400)
+    if base_amount < 30:
+        return Response({'error': 'Minimum deposit is $30'}, status=400)
 
-    unique_amount = generate_unique_amount(base_amount)
     deposit = USDTDepositRequest.objects.create(
         user=request.user,
         base_amount=Decimal(str(base_amount)),
-        expected_amount=unique_amount,
+        expected_amount=Decimal(str(base_amount)),
         expires_at=timezone.now() + timedelta(minutes=30),
     )
     return Response({
         'deposit_id': str(deposit.id),
         'wallet_address': deposit.wallet_address,
-        'amount_to_send': str(unique_amount),
-        'base_amount': str(deposit.base_amount),
+        'amount_to_send': str(deposit.base_amount),
         'expires_at': deposit.expires_at.isoformat(),
         'network': 'TRC20 (Tron)',
     })
