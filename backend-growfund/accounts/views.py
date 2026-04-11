@@ -1207,3 +1207,146 @@ def debug_admin_suspend(request, user_id):
                 'exception_message': str(e)
             }
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# Admin Balance Management
+# ---------------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_credit_balance(request, user_id):
+    """
+    Credit or debit a user's balance.
+    Body: { action: "credit"|"debit", amount: 100, note: "optional" }
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+
+    action = request.data.get('action', '').lower()
+    note = request.data.get('note', '')
+
+    try:
+        amount = Decimal(str(request.data.get('amount', 0)))
+        if amount <= 0:
+            return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        return Response({'error': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if action not in ('credit', 'debit'):
+        return Response({'error': 'action must be credit or debit'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    from transactions.models import Transaction
+    import uuid
+
+    with transaction.atomic():
+        if action == 'credit':
+            user.balance += amount
+        else:
+            if user.balance < amount:
+                return Response({'error': 'Insufficient balance'}, status=status.HTTP_400_BAD_REQUEST)
+            user.balance -= amount
+        user.save(update_fields=['balance'])
+
+        Transaction.objects.create(
+            user=user,
+            transaction_type='deposit' if action == 'credit' else 'withdrawal',
+            amount=amount,
+            net_amount=amount,
+            status='completed',
+            reference=str(uuid.uuid4()),
+            description=note or f'Admin {action} by {request.user.email}',
+        )
+
+        try:
+            from notifications.models import Notification
+            Notification.objects.create(
+                user=user,
+                title='Balance Updated',
+                message=f'Your account has been {"credited" if action == "credit" else "debited"} ${amount}.',
+                notification_type='info',
+            )
+        except Exception:
+            pass
+
+    print(f'[AUDIT] {request.user.email} {action}ed ${amount} to {user.email}. Note: {note}')
+
+    return Response({
+        'success': True,
+        'user': user.email,
+        'action': action,
+        'amount': str(amount),
+        'new_balance': str(user.balance),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_bulk_credit(request):
+    """
+    Credit multiple users at once.
+    Body: { user_ids: [1,2,3], amount: 100, note: "promo bonus" }
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+
+    user_ids = request.data.get('user_ids', [])
+    note = request.data.get('note', 'Admin bulk credit')
+
+    try:
+        amount = Decimal(str(request.data.get('amount', 0)))
+        if amount <= 0:
+            return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        return Response({'error': 'Invalid amount'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not user_ids:
+        return Response({'error': 'user_ids is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    from transactions.models import Transaction
+    import uuid
+
+    credited = []
+    failed = []
+
+    for uid in user_ids:
+        try:
+            user = User.objects.get(id=uid)
+            with transaction.atomic():
+                user.balance += amount
+                user.save(update_fields=['balance'])
+                Transaction.objects.create(
+                    user=user,
+                    transaction_type='deposit',
+                    amount=amount,
+                    net_amount=amount,
+                    status='completed',
+                    reference=str(uuid.uuid4()),
+                    description=note,
+                )
+                try:
+                    from notifications.models import Notification
+                    Notification.objects.create(
+                        user=user,
+                        title='Balance Credited',
+                        message=f'${amount} has been added to your account. {note}',
+                        notification_type='success',
+                    )
+                except Exception:
+                    pass
+            credited.append(user.email)
+        except User.DoesNotExist:
+            failed.append(uid)
+
+    return Response({
+        'success': True,
+        'credited': credited,
+        'failed': failed,
+        'amount': str(amount),
+        'total_credited': len(credited),
+    })

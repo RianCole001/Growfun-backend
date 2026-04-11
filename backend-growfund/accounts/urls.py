@@ -8,7 +8,8 @@ from .views import (
     AdminUserResetPasswordView, UserReferralsView, ReferralStatsView,
     generate_referral_code, dashboard_stats, admin_suspended_users,
     admin_user_stats, create_test_notification, admin_dashboard_overview,
-    debug_admin_delete, debug_admin_suspend
+    debug_admin_delete, debug_admin_suspend,
+    admin_credit_balance, admin_bulk_credit
 )
 
 app_name = 'accounts'
@@ -47,6 +48,8 @@ urlpatterns = [
     path('admin/users/<int:user_id>/verify/', AdminUserVerifyView.as_view(), name='admin-user-verify'),
     path('admin/users/<int:user_id>/suspend/', AdminUserSuspendView.as_view(), name='admin-user-suspend'),
     path('admin/users/<int:user_id>/reset-password/', AdminUserResetPasswordView.as_view(), name='admin-user-reset-password'),
+    path('admin/users/<int:user_id>/balance/', admin_credit_balance, name='admin-user-balance'),
+    path('admin/users/bulk-credit/', admin_bulk_credit, name='admin-bulk-credit'),
     
     # Debug endpoints (remove in production)
     path('debug/admin/users/<int:user_id>/delete/', debug_admin_delete, name='debug-admin-delete'),
