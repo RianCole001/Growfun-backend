@@ -121,7 +121,7 @@ def process_usdt_deposits():
 
                 try:
                     from notifications.models import Notification
-                    Notification.objects.create(
+                    Notification.create_notification(
                         user=user,
                         title='Deposit Confirmed',
                         message=f'Your USDT deposit of ${received_amount} has been confirmed and credited.',

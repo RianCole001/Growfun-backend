@@ -1265,7 +1265,7 @@ def admin_credit_balance(request, user_id):
 
         try:
             from notifications.models import Notification
-            Notification.objects.create(
+            Notification.create_notification(
                 user=user,
                 title='Balance Updated',
                 message=f'Your account has been {"credited" if action == "credit" else "debited"} ${amount}.',
@@ -1331,7 +1331,7 @@ def admin_bulk_credit(request):
                 )
                 try:
                     from notifications.models import Notification
-                    Notification.objects.create(
+                    Notification.create_notification(
                         user=user,
                         title='Balance Credited',
                         message=f'${amount} has been added to your account. {note}',
