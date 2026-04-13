@@ -752,7 +752,7 @@ class ReferralStatsView(APIView):
                 pending_earnings += float(referral.reward_amount)
         
         from django.conf import settings as django_settings
-        frontend_url = getattr(django_settings, 'FRONTEND_URL', 'https://dashboard-yfb8.onrender.com')
+        frontend_url = getattr(django_settings, 'FRONTEND_URL', 'https://growfundapp.us')
         stats = {
             'referral_code': user.referral_code,
             'referral_link': f'{frontend_url}/register?ref={user.referral_code}',

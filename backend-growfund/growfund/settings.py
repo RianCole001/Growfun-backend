@@ -169,6 +169,8 @@ else:
     # Production: Allow all origins (frontend on Render + any future domains)
     CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOWED_ORIGINS = [
+        'https://growfundapp.us',
+        'https://www.growfundapp.us',
         'https://growfund-dashboard.onrender.com',
         'https://dashboard-yfb8.onrender.com',
         'http://localhost:3000',
@@ -204,6 +206,8 @@ CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='').split(',') if 
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'https://growfun-backend.onrender.com',
+    'https://growfundapp.us',
+    'https://www.growfundapp.us',
     'https://growfund-dashboard.onrender.com',
     'https://dashboard-yfb8.onrender.com',
 ]
@@ -226,7 +230,7 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@growfund.com')
 
 # Frontend URL
-FRONTEND_URL = config('FRONTEND_URL', default='https://dashboard-yfb8.onrender.com')
+FRONTEND_URL = config('FRONTEND_URL', default='https://growfundapp.us')
 
 # Backend URL (used for webhooks and callbacks)
 BACKEND_URL = config('BACKEND_URL', default='https://growfun-backend.onrender.com')
