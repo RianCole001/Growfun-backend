@@ -58,7 +58,7 @@ class PlatformSettingsSerializer(serializers.ModelSerializer):
             'capitalBasicMin', 'capitalStandardMin', 'capitalAdvanceMin',
             # Real Estate Individual Minimums
             'realEstateStarterMin', 'realEstatePremiumMin', 'realEstateLuxuryMin',
-            'maintenanceMode', 'emailNotifications',
+            'emailNotifications',
             'smsNotifications', 'autoApproveDeposits', 'autoApproveWithdrawals',
             'autoApproveDepositLimit', 'autoApproveWithdrawalLimit',
             'updatedAt', 'updatedBy'

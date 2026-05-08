@@ -1,0 +1,18 @@
+# Binary Trading System Requirements
+# Install with: pip install -r binary_trading/requirements-binary-trading.txt
+
+# WebSocket Support
+channels==4.0.0
+channels-redis==4.1.0
+daphne==4.0.0
+
+# Redis (for channel layer)
+redis==5.0.1
+
+# Async Support
+asgiref==3.7.2
+
+# Already in main requirements.txt but listed here for reference:
+# Django>=4.2.0
+# djangorestframework>=3.14.0
+# django-cors-headers>=4.0.0

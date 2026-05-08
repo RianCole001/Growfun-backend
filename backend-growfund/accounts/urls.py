@@ -9,7 +9,7 @@ from .views import (
     generate_referral_code, dashboard_stats, admin_suspended_users,
     admin_user_stats, create_test_notification, admin_dashboard_overview,
     debug_admin_delete, debug_admin_suspend,
-    admin_credit_balance, admin_bulk_credit
+    admin_credit_balance, admin_bulk_credit, auth_ping
 )
 
 app_name = 'accounts'
@@ -30,6 +30,7 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('balance/', UserBalanceView.as_view(), name='balance'),
     path('dashboard-stats/', dashboard_stats, name='dashboard-stats'),
+    path('ping/', auth_ping, name='auth-ping'),  # Ping endpoint for auth check
     
     # Referrals
     path('referrals/', UserReferralsView.as_view(), name='referrals'),

@@ -77,16 +77,18 @@ class AdminCryptoPrice(models.Model):
         return 0
     
     def clean(self):
-        """Validate that sell price is less than buy price"""
-        from django.core.exceptions import ValidationError
+        """Validate that sell price is less than buy price (warning only for admin)"""
+        # Allow admin to set any prices - just log a warning
         if self.sell_price >= self.buy_price:
-            raise ValidationError({
-                'sell_price': 'Sell price must be less than buy price to maintain spread.'
-            })
+            print(f"Warning: {self.coin} sell price (${self.sell_price}) >= buy price (${self.buy_price})")
     
     def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
+        # Skip full_clean for admin price updates to allow flexible pricing
+        if kwargs.pop('skip_validation', False):
+            super().save(*args, **kwargs)
+        else:
+            self.full_clean()
+            super().save(*args, **kwargs)
 
 
 class CryptoPriceHistory(models.Model):

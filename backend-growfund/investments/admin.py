@@ -1,13 +1,14 @@
 from django.contrib import admin
-from .models import Trade, TradeHistory
+from .models import Trade, TradeHistory, CapitalInvestmentPlan
 
 
 @admin.register(Trade)
 class TradeAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'asset', 'trade_type', 'status', 'entry_price', 'quantity', 'profit_loss', 'created_at')
     list_filter = ('asset', 'trade_type', 'status', 'created_at')
-    search_fields = ('user__email', 'asset')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name', 'asset')
     readonly_fields = ('id', 'created_at', 'updated_at', 'closed_at')
+    date_hierarchy = 'created_at'
     
     fieldsets = (
         ('Trade Information', {
@@ -26,14 +27,20 @@ class TradeAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at', 'closed_at')
         }),
     )
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related"""
+        qs = super().get_queryset(request)
+        return qs.select_related('user')
 
 
 @admin.register(TradeHistory)
 class TradeHistoryAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'asset', 'trade_type', 'entry_price', 'exit_price', 'profit_loss', 'close_reason', 'closed_at')
     list_filter = ('asset', 'trade_type', 'close_reason', 'closed_at')
-    search_fields = ('user__email', 'asset')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name', 'asset')
     readonly_fields = ('id', 'closed_at')
+    date_hierarchy = 'closed_at'
     
     fieldsets = (
         ('Trade Information', {
@@ -49,6 +56,64 @@ class TradeHistoryAdmin(admin.ModelAdmin):
             'fields': ('close_reason', 'opened_at', 'closed_at')
         }),
     )
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related"""
+        qs = super().get_queryset(request)
+        return qs.select_related('user')
+
+
+@admin.register(CapitalInvestmentPlan)
+class CapitalInvestmentPlanAdmin(admin.ModelAdmin):
+    """Admin interface for Capital Investment Plans"""
+    list_display = ('id', 'user', 'plan_type', 'initial_amount', 'growth_rate', 'period_months', 'final_amount', 'status', 'created_at')
+    list_filter = ('plan_type', 'status', 'period_months', 'created_at')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name')
+    readonly_fields = ('id', 'total_return', 'final_amount', 'monthly_growth', 'created_at', 'updated_at', 'completed_at')
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Plan Information', {
+            'fields': ('id', 'user', 'plan_type', 'status')
+        }),
+        ('Investment Details', {
+            'fields': ('initial_amount', 'growth_rate', 'period_months')
+        }),
+        ('Calculated Returns', {
+            'fields': ('total_return', 'final_amount', 'monthly_growth'),
+            'description': 'These values are automatically calculated based on the growth rate and period.'
+        }),
+        ('Dates', {
+            'fields': ('start_date', 'end_date', 'created_at', 'updated_at', 'completed_at')
+        }),
+    )
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related"""
+        qs = super().get_queryset(request)
+        return qs.select_related('user')
+    
+    actions = ['recalculate_returns', 'mark_completed']
+    
+    def recalculate_returns(self, request, queryset):
+        """Recalculate returns for selected plans"""
+        count = 0
+        for plan in queryset:
+            plan.calculate_returns()
+            plan.save()
+            count += 1
+        self.message_user(request, f'Recalculated returns for {count} investment plans.')
+    recalculate_returns.short_description = 'Recalculate returns for selected plans'
+    
+    def mark_completed(self, request, queryset):
+        """Mark selected plans as completed"""
+        from django.utils import timezone
+        count = queryset.filter(status='active').update(
+            status='completed',
+            completed_at=timezone.now()
+        )
+        self.message_user(request, f'Marked {count} plans as completed.')
+    mark_completed.short_description = 'Mark selected plans as completed'
 
 
 # Admin Crypto Price Management
@@ -98,6 +163,7 @@ class CryptoPriceHistoryAdmin(admin.ModelAdmin):
     list_filter = ('coin', 'created_at')
     search_fields = ('coin',)
     readonly_fields = ('coin', 'buy_price', 'sell_price', 'change_24h', 'updated_by', 'created_at')
+    date_hierarchy = 'created_at'
     
     def has_add_permission(self, request):
         return False  # History is auto-created

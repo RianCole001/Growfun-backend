@@ -1,39 +1,41 @@
 #!/usr/bin/env python
-"""Check trade and balance status"""
+"""Check trades in database"""
 import os
 import django
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'growfund.settings')
 django.setup()
 
-from accounts.models import User
-from binary_trading.models import BinaryTrade, TradingAsset
-from demo.models import DemoAccount
+from investments.models import Trade
+from django.contrib.auth import get_user_model
+from transactions.models import Transaction
 
-# Get first user
-user = User.objects.first()
-if not user:
-    print("No users found!")
-    exit()
+User = get_user_model()
 
-print(f"User: {user.email}")
-print(f"Real Balance: ${user.balance}")
+print('=== TRADE MODEL CHECK ===')
+print(f'Total trades in database: {Trade.objects.count()}')
+print(f'Open trades: {Trade.objects.filter(status="open").count()}')
+print(f'Closed trades: {Trade.objects.filter(status="closed").count()}')
 
-# Check demo account
-demo = DemoAccount.objects.filter(user=user).first()
-if demo:
-    print(f"Demo Balance: ${demo.balance}")
-else:
-    print("Demo Balance: No demo account")
+print('\n=== RECENT TRADES ===')
+recent_trades = Trade.objects.all().order_by('-created_at')[:5]
+for trade in recent_trades:
+    amount = trade.entry_price * trade.quantity if trade.entry_price and trade.quantity else 0
+    print(f'ID: {trade.id}, User: {trade.user.email}, Asset: {trade.asset}, Status: {trade.status}, Amount: ${amount:.2f}')
 
-# Check recent trades
-trades = BinaryTrade.objects.filter(user=user).order_by('-opened_at')[:10]
-print(f"\nRecent Trades: {trades.count()}")
-for t in trades:
-    print(f"  - {t.asset.symbol} {t.direction.upper()} ${t.amount} [{t.status}] Demo:{t.is_demo} Opened:{t.opened_at}")
+print('\n=== USERS WITH TRADES ===')
+users_with_trades = User.objects.filter(trade_set__isnull=False).distinct()
+for user in users_with_trades:
+    trade_count = user.trade_set.count()
+    open_count = user.trade_set.filter(status='open').count()
+    print(f'{user.email}: {trade_count} total trades, {open_count} open')
 
-# Check assets
-assets = TradingAsset.objects.filter(is_active=True)
-print(f"\nActive Assets: {assets.count()}")
-for a in assets:
-    print(f"  - {a.symbol}: {a.name}")
+print('\n=== INVESTMENT TRANSACTIONS ===')
+investment_txns = Transaction.objects.filter(transaction_type='investment').order_by('-created_at')[:5]
+for txn in investment_txns:
+    print(f'User: {txn.user.email}, Amount: ${txn.amount}, Status: {txn.status}, Date: {txn.created_at}')
+
+print('\n=== ADMIN CREDIT TRANSACTIONS ===')
+admin_credits = Transaction.objects.filter(transaction_type='admin_credit').order_by('-created_at')[:5]
+for txn in admin_credits:
+    print(f'User: {txn.user.email}, Amount: ${txn.amount}, Status: {txn.status}, Date: {txn.created_at}')

@@ -9,6 +9,8 @@ class Transaction(models.Model):
         ('investment', 'Investment'),
         ('profit', 'Profit'),
         ('referral_bonus', 'Referral Bonus'),
+        ('admin_credit', 'Admin Credit'),
+        ('admin_debit', 'Admin Debit'),
     )
     
     PAYMENT_METHODS = (

@@ -1242,26 +1242,52 @@ def admin_credit_balance(request, user_id):
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     from transactions.models import Transaction
+    from django.db import transaction as db_transaction
     import uuid
 
-    with transaction.atomic():
+    with db_transaction.atomic():
         if action == 'credit':
             user.balance += amount
+            trans_type = 'deposit'  # Changed from 'admin_credit' to 'deposit'
+            
+            # Create a single deposit transaction with admin_transfer method
+            deposit_reference = f'ADMIN-DEPOSIT-{user.id}-{int(amount)}-{timezone.now().strftime("%Y%m%d%H%M%S")}'
+            Transaction.objects.create(
+                user=user,
+                transaction_type=trans_type,
+                payment_method='admin_transfer',
+                amount=amount,
+                fee=Decimal('0.00'),
+                net_amount=amount,
+                status='completed',
+                reference=deposit_reference,
+                description=f'Admin deposit for {user.get_full_name() or user.email} - {note}' if note else f'Admin deposit for {user.get_full_name() or user.email}',
+                completed_at=timezone.now(),
+                metadata={
+                    'admin_credited_by': request.user.email,
+                    'admin_credit_note': note,
+                    'is_admin_deposit': True
+                }
+            )
+            
         else:
             if user.balance < amount:
                 return Response({'error': 'Insufficient balance'}, status=status.HTTP_400_BAD_REQUEST)
             user.balance -= amount
+            trans_type = 'admin_debit'
+            
+            Transaction.objects.create(
+                user=user,
+                transaction_type=trans_type,
+                amount=amount,
+                net_amount=amount,
+                status='completed',
+                reference=str(uuid.uuid4()),
+                description=note or f'Admin {action} by {request.user.email}',
+                completed_at=timezone.now(),
+            )
+            
         user.save(update_fields=['balance'])
-
-        Transaction.objects.create(
-            user=user,
-            transaction_type='deposit' if action == 'credit' else 'withdrawal',
-            amount=amount,
-            net_amount=amount,
-            status='completed',
-            reference=str(uuid.uuid4()),
-            description=note or f'Admin {action} by {request.user.email}',
-        )
 
         try:
             from notifications.models import Notification
@@ -1286,6 +1312,7 @@ def admin_credit_balance(request, user_id):
 
 
 @api_view(['POST'])
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def admin_bulk_credit(request):
     """
@@ -1309,6 +1336,7 @@ def admin_bulk_credit(request):
         return Response({'error': 'user_ids is required'}, status=status.HTTP_400_BAD_REQUEST)
 
     from transactions.models import Transaction
+    from django.db import transaction as db_transaction
     import uuid
 
     credited = []
@@ -1317,17 +1345,41 @@ def admin_bulk_credit(request):
     for uid in user_ids:
         try:
             user = User.objects.get(id=uid)
-            with transaction.atomic():
+            with db_transaction.atomic():
                 user.balance += amount
                 user.save(update_fields=['balance'])
+                
+                # Create admin credit transaction
                 Transaction.objects.create(
                     user=user,
-                    transaction_type='deposit',
+                    transaction_type='admin_credit',
                     amount=amount,
                     net_amount=amount,
                     status='completed',
                     reference=str(uuid.uuid4()),
                     description=note,
+                    completed_at=timezone.now(),
+                )
+                
+                # ALSO create a deposit transaction for admin tracking
+                deposit_reference = f'ADMIN-BULK-DEPOSIT-{user.id}-{int(amount)}-{timezone.now().strftime("%Y%m%d%H%M%S")}'
+                Transaction.objects.create(
+                    user=user,
+                    transaction_type='deposit',
+                    payment_method='admin_transfer',
+                    amount=amount,
+                    fee=Decimal('0.00'),
+                    net_amount=amount,
+                    status='completed',
+                    reference=deposit_reference,
+                    description=f'Admin bulk deposit for {user.get_full_name() or user.email} - {note}',
+                    completed_at=timezone.now(),
+                    metadata={
+                        'admin_credited_by': request.user.email,
+                        'admin_credit_note': note,
+                        'is_admin_deposit': True,
+                        'is_bulk_credit': True
+                    }
                 )
                 try:
                     from notifications.models import Notification
@@ -1350,3 +1402,21 @@ def admin_bulk_credit(request):
         'amount': str(amount),
         'total_credited': len(credited),
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def auth_ping(request):
+    """
+    Simple ping endpoint to check authentication status
+    """
+    return Response({
+        'success': True,
+        'authenticated': True,
+        'user': {
+            'id': request.user.id,
+            'email': request.user.email,
+            'balance': str(request.user.balance),
+            'is_verified': request.user.is_verified
+        }
+    }, status=status.HTTP_200_OK)

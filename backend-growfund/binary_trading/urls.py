@@ -22,6 +22,10 @@ urlpatterns = [
     # Stats
     path('stats/', views.get_user_stats, name='user-stats'),
     
+    # Social/Feed
+    path('feed/winners/', views.get_recent_winners, name='recent-winners'),
+    path('feed/live/', views.get_live_feed, name='live-feed'),
+    
     # Admin
     path('admin/close-expired/', views.close_expired_trades, name='close-expired'),
 ]

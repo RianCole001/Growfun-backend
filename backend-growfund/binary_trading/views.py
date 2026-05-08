@@ -28,8 +28,11 @@ def get_assets(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_asset_price(request, symbol):
-    """Get current price for a specific asset"""
-    price = PriceFeedService.get_current_price(symbol.upper())
+    """Get current price for a specific asset (uses synthetic engine)"""
+    from .synthetic_price_engine import price_engine_manager
+    
+    # Use synthetic price engine for real-time prices
+    price = price_engine_manager.get_price(symbol.upper())
     
     if price is None:
         return Response({
@@ -282,20 +285,15 @@ def close_trade(request, trade_id):
 @permission_classes([IsAuthenticated])
 def get_chart_data(request, symbol):
     """
-    Return OHLC candlestick data for a trading asset.
+    Return OHLC candlestick data for a trading asset (uses synthetic engine).
 
     Query params:
       interval  - 1m | 5m | 15m | 30m | 1h | 4h | 1d  (default: 1m)
       limit     - number of candles to return           (default: 100, max: 500)
 
-    Sources (in priority order):
-      Crypto  → CoinGecko OHLC API (real market data)
-      Gold    → Yahoo Finance GC=F  (real market data)
-      Oil     → Yahoo Finance CL=F  (real market data)
-      Forex   → Yahoo Finance EURUSD=X etc. (real market data)
-      Fallback→ Aggregated stored price ticks (when all APIs unavailable)
+    Uses synthetic price engine for realistic, controlled price movements.
     """
-    from .chart_service import ChartService
+    from .synthetic_price_engine import price_engine_manager
 
     interval = request.GET.get('interval', '1m')
     valid_intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
@@ -310,7 +308,8 @@ def get_chart_data(request, symbol):
     except ValueError:
         limit = 100
 
-    candles = ChartService.get_ohlc(symbol.upper(), interval, limit)
+    # Get historical candles from synthetic engine
+    candles = price_engine_manager.get_historical_candles(symbol.upper(), count=limit)
 
     if not candles:
         return Response({
@@ -343,4 +342,64 @@ def get_balances(request):
         'success': True,
         'real_balance': float(request.user.balance),
         'demo_balance': float(demo_account.balance)
+    })
+
+
+@api_view(['GET'])
+def get_recent_winners(request):
+    """
+    Get recent winning trades for display (public endpoint).
+    Shows anonymized usernames for privacy.
+    """
+    from .bot_simulator import BotSimulator
+    
+    limit = min(int(request.GET.get('limit', 10)), 50)
+    include_bots = request.GET.get('include_bots', 'true').lower() == 'true'
+    
+    winners = BotSimulator.get_recent_winners(limit=limit, include_bots=include_bots)
+    
+    return Response({
+        'success': True,
+        'winners': winners,
+        'count': len(winners)
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_live_feed(request):
+    """
+    Get live trading activity feed.
+    Shows recent trades (wins and losses) for social proof.
+    """
+    limit = min(int(request.GET.get('limit', 20)), 100)
+    
+    recent_trades = BinaryTrade.objects.filter(
+        status__in=['won', 'lost'],
+        is_demo=False
+    ).select_related('user', 'asset').order_by('-closed_at')[:limit]
+    
+    feed = []
+    for trade in recent_trades:
+        # Anonymize username
+        username = trade.user.email.split('@')[0]
+        if len(username) > 3:
+            display_name = username[0] + '***' + username[-1]
+        else:
+            display_name = username[0] + '***'
+        
+        feed.append({
+            'username': display_name,
+            'asset': trade.asset.symbol,
+            'direction': trade.direction,
+            'amount': float(trade.amount),
+            'result': trade.status,
+            'profit_loss': float(trade.profit_loss) if trade.profit_loss else 0,
+            'timestamp': trade.closed_at.isoformat() if trade.closed_at else None
+        })
+    
+    return Response({
+        'success': True,
+        'feed': feed,
+        'count': len(feed)
     })

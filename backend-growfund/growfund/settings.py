@@ -21,6 +21,10 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',') if config('ALLOW
 if 'growfun-backend.onrender.com' not in ALLOWED_HOSTS and '*' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('growfun-backend.onrender.com')
 
+# Add ngrok domain for remote access
+if 'abd5-129-222-147-116.ngrok-free.app' not in ALLOWED_HOSTS and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('abd5-129-222-147-116.ngrok-free.app')
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -95,6 +99,12 @@ DATABASES = {
 
 # Custom User Model
 AUTH_USER_MODEL = 'accounts.User'
+
+# Authentication Backends (use email instead of username)
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.EmailBackend',  # Custom email-based authentication
+    'django.contrib.auth.backends.ModelBackend',  # Fallback to default
+]
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

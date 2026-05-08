@@ -11,28 +11,27 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--email', type=str, help='Admin email address')
-        parser.add_argument('--username', type=str, help='Admin username')
+        parser.add_argument('--first-name', type=str, help='Admin first name')
+        parser.add_argument('--last-name', type=str, help='Admin last name')
 
     def handle(self, *args, **options):
         email = options.get('email')
-        username = options.get('username')
+        first_name = options.get('first_name')
+        last_name = options.get('last_name')
         
         if not email:
             email = input('Enter admin email: ')
         
-        if not username:
-            username = input('Enter admin username: ')
+        if not first_name:
+            first_name = input('Enter admin first name (optional, press Enter to skip): ') or 'Admin'
+        
+        if not last_name:
+            last_name = input('Enter admin last name (optional, press Enter to skip): ') or 'User'
         
         # Check if user already exists
         if User.objects.filter(email=email).exists():
             self.stdout.write(
                 self.style.ERROR(f'User with email {email} already exists')
-            )
-            return
-        
-        if User.objects.filter(username=username).exists():
-            self.stdout.write(
-                self.style.ERROR(f'User with username {username} already exists')
             )
             return
         
@@ -54,15 +53,15 @@ class Command(BaseCommand):
         
         try:
             with transaction.atomic():
-                # Create admin user
+                # Create admin user (no username field needed)
                 admin_user = User.objects.create_user(
-                    username=username,
                     email=email,
                     password=password,
+                    first_name=first_name,
+                    last_name=last_name,
                     is_staff=True,
                     is_superuser=True,
-                    first_name='Admin',
-                    last_name='User'
+                    is_verified=True
                 )
                 
                 # Create or get Admin group
@@ -71,7 +70,17 @@ class Command(BaseCommand):
                 
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f'Successfully created admin user: {username} ({email})'
+                        f'Successfully created admin user: {email}'
+                    )
+                )
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'Name: {first_name} {last_name}'
+                    )
+                )
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'Staff: {admin_user.is_staff}, Superuser: {admin_user.is_superuser}'
                     )
                 )
                 

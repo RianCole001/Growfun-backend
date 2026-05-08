@@ -928,3 +928,88 @@ def user_crypto_portfolio(request):
         },
         'success': True
     }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_all_investments(request):
+    """
+    Get all user investments (crypto, capital plans, etc.) in one unified response
+    """
+    user = request.user
+    all_investments = []
+    
+    # 1. Crypto Investments (from Trade model)
+    crypto_trades = Trade.objects.filter(user=user, status='open').exclude(asset__in=['gold'])
+    
+    # Get live prices for crypto
+    if crypto_trades.exists():
+        held_coins = set(trade.asset for trade in crypto_trades)
+        live_prices, coin_names = _fetch_live_prices(held_coins)
+        
+        for trade in crypto_trades:
+            coin = trade.asset
+            invested_amount = trade.entry_price * trade.quantity
+            current_price = live_prices.get(coin) or trade.current_price or trade.entry_price
+            current_value = trade.quantity * current_price
+            profit_loss = current_value - invested_amount
+            profit_loss_percentage = (profit_loss / invested_amount) * 100 if invested_amount > 0 else Decimal('0')
+            
+            all_investments.append({
+                'id': str(trade.id),
+                'type': 'crypto',
+                'name': coin_names.get(coin, coin),
+                'asset': coin,
+                'amount': f"{invested_amount:.2f}",
+                'quantity': f"{trade.quantity:.8f}",
+                'price_at_purchase': f"{trade.entry_price:.2f}",
+                'current_price': f"{current_price:.2f}",
+                'current_value': f"{current_value:.2f}",
+                'profit_loss': f"{profit_loss:.2f}",
+                'profit_loss_percentage': float(f"{profit_loss_percentage:.2f}"),
+                'status': 'active',
+                'date': trade.created_at.isoformat()
+            })
+    
+    # 2. Capital Investment Plans
+    capital_plans = CapitalInvestmentPlan.objects.filter(user=user, status='active')
+    for plan in capital_plans:
+        all_investments.append({
+            'id': str(plan.id),
+            'type': 'capital_plan',
+            'name': f'{plan.plan_type.title()} Plan',
+            'asset': plan.plan_type,
+            'amount': f"{plan.initial_amount:.2f}",
+            'quantity': '1',
+            'price_at_purchase': f"{plan.initial_amount:.2f}",
+            'current_price': f"{plan.total_return:.2f}",
+            'current_value': f"{plan.total_return:.2f}",
+            'profit_loss': f"{plan.total_return - plan.initial_amount:.2f}",
+            'profit_loss_percentage': float(f"{plan.growth_rate:.2f}"),
+            'status': 'active',
+            'date': plan.created_at.isoformat(),
+            'period_months': plan.period_months,
+            'growth_rate': f"{plan.growth_rate:.2f}%"
+        })
+    
+    # Calculate totals
+    total_invested = sum(Decimal(inv['amount']) for inv in all_investments)
+    total_value = sum(Decimal(inv['current_value']) for inv in all_investments)
+    total_profit_loss = total_value - total_invested
+    total_profit_loss_percentage = (total_profit_loss / total_invested) * 100 if total_invested > 0 else Decimal('0')
+    
+    return Response({
+        'data': {
+            'investments': all_investments,
+            'summary': {
+                'total_invested': f"{total_invested:.2f}",
+                'total_value': f"{total_value:.2f}",
+                'total_profit_loss': f"{total_profit_loss:.2f}",
+                'total_profit_loss_percentage': float(f"{total_profit_loss_percentage:.2f}"),
+                'investment_count': len(all_investments),
+                'crypto_count': len([inv for inv in all_investments if inv['type'] == 'crypto']),
+                'capital_plan_count': len([inv for inv in all_investments if inv['type'] == 'capital_plan'])
+            }
+        },
+        'success': True
+    }, status=status.HTTP_200_OK)

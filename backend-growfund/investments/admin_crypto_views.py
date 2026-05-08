@@ -210,7 +210,7 @@ def admin_update_crypto_price(request):
             
             crypto_price.is_active = True
             crypto_price.updated_by = request.user
-            crypto_price.save()
+            crypto_price.save(skip_validation=True)  # Allow admin to set any prices
             
         except AdminCryptoPrice.DoesNotExist:
             # Create new price record if it doesn't exist
@@ -231,6 +231,8 @@ def admin_update_crypto_price(request):
                 is_active=True,
                 updated_by=request.user
             )
+            # Save without validation to allow flexible pricing
+            crypto_price.save(skip_validation=True)
         
         # Log price change to history
         CryptoPriceHistory.objects.create(

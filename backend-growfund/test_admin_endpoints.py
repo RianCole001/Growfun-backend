@@ -1,145 +1,88 @@
 #!/usr/bin/env python
 """
-Test script for admin endpoints
-Run this to test admin delete and suspend functionality
+Test script to check admin endpoints directly
 """
 import os
+import sys
 import django
-import requests
-import json
 
 # Setup Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'growfund.settings')
 django.setup()
 
+from django.test import Client
 from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
+import json
+
+# Add testserver to ALLOWED_HOSTS for testing
+if 'testserver' not in settings.ALLOWED_HOSTS:
+    settings.ALLOWED_HOSTS.append('testserver')
 
 User = get_user_model()
+client = Client()
 
-def get_admin_token():
-    """Get JWT token for admin user"""
-    try:
-        admin = User.objects.get(email='admin@growfund.com')
-        refresh = RefreshToken.for_user(admin)
-        return str(refresh.access_token)
-    except User.DoesNotExist:
-        print("❌ Admin user not found. Creating admin user...")
-        admin = User.objects.create_superuser(
-            email='admin@growfund.com',
-            password='Admin123!',
-            first_name='Admin',
-            last_name='User'
-        )
-        refresh = RefreshToken.for_user(admin)
-        return str(refresh.access_token)
+# Get an admin user
+admin_user = User.objects.get(email='test_admin@example.com')
+print(f'Testing with admin user: {admin_user.email}')
 
-def create_test_user():
-    """Create a test user for deletion/suspension"""
-    try:
-        test_user = User.objects.create_user(
-            email='testuser@example.com',
-            password='testpass123',
-            first_name='Test',
-            last_name='User'
-        )
-        print(f"✅ Created test user: {test_user.email} (ID: {test_user.id})")
-        return test_user
-    except Exception as e:
-        print(f"❌ Error creating test user: {e}")
-        # Try to get existing user
-        try:
-            test_user = User.objects.get(email='testuser@example.com')
-            print(f"✅ Using existing test user: {test_user.email} (ID: {test_user.id})")
-            return test_user
-        except User.DoesNotExist:
-            return None
+# Try the known password
+password = 'testpass123'
+print(f'\nTrying password: {password}')
+login_response = client.post('/api/auth/login/', {
+    'email': admin_user.email,
+    'password': password
+}, content_type='application/json')
+    
+if login_response.status_code == 200:
+    login_data = json.loads(login_response.content)
+    token = login_data.get('tokens', {}).get('access')
+    if token:
+        print(f'Login successful! Token: {token[:20]}...')
+        
+        # Test admin endpoints
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        
+        print('\n=== TESTING ADMIN ENDPOINTS ===')
+        
+        # Test investments endpoint
+        inv_response = client.get('/api/admin/investments/', **headers)
+        print(f'Investments endpoint: {inv_response.status_code}')
+        if inv_response.status_code == 200:
+            inv_data = json.loads(inv_response.content)
+            print(f'Investments response: {inv_data}')
+            print(f'Investments data count: {len(inv_data.get("data", []))}')
+            if inv_data.get('data'):
+                print(f'Sample investment: {inv_data["data"][0]}')
+        else:
+            print(f'Investments error: {inv_response.content}')
+        
+        # Test deposits endpoint
+        dep_response = client.get('/api/admin/deposits/', **headers)
+        print(f'Deposits endpoint: {dep_response.status_code}')
+        if dep_response.status_code == 200:
+            dep_data = json.loads(dep_response.content)
+            print(f'Deposits response: {dep_data}')
+            print(f'Deposits data count: {len(dep_data.get("data", []))}')
+            if dep_data.get('data'):
+                print(f'Sample deposit: {dep_data["data"][0]}')
+        else:
+            print(f'Deposits error: {dep_response.content}')
+        
+        # Test transactions endpoint
+        txn_response = client.get('/api/admin/transactions/', **headers)
+        print(f'Transactions endpoint: {txn_response.status_code}')
+        if txn_response.status_code == 200:
+            txn_data = json.loads(txn_response.content)
+            print(f'Transactions response: {txn_data}')
+            print(f'Transactions data count: {len(txn_data.get("data", []))}')
+            if txn_data.get('data'):
+                print(f'Sample transaction: {txn_data["data"][0]}')
+        else:
+            print(f'Transactions error: {txn_response.content}')
+    else:
+        print(f'Login response missing token: {login_data}')
+else:
+    print(f'Login failed: {login_response.status_code} - {login_response.content}')
 
-def test_admin_endpoints():
-    """Test admin delete and suspend endpoints"""
-    print("🧪 Testing Admin Endpoints...")
-    
-    # Get admin token
-    token = get_admin_token()
-    print(f"✅ Got admin token: {token[:20]}...")
-    
-    # Create test user
-    test_user = create_test_user()
-    if not test_user:
-        print("❌ Could not create test user")
-        return
-    
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
-    
-    base_url = 'http://localhost:8000'  # Change if running on different port
-    
-    # Test 1: Suspend user
-    print(f"\n🔧 Testing suspend user {test_user.id}...")
-    suspend_url = f"{base_url}/api/auth/admin/users/{test_user.id}/suspend/"
-    suspend_data = {'action': 'suspend'}
-    
-    try:
-        response = requests.post(suspend_url, json=suspend_data, headers=headers)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.json()}")
-        
-        if response.status_code == 200:
-            print("✅ Suspend test PASSED")
-        else:
-            print("❌ Suspend test FAILED")
-    except Exception as e:
-        print(f"❌ Suspend test ERROR: {e}")
-    
-    # Test 2: Unsuspend user
-    print(f"\n🔧 Testing unsuspend user {test_user.id}...")
-    unsuspend_data = {'action': 'unsuspend'}
-    
-    try:
-        response = requests.post(suspend_url, json=unsuspend_data, headers=headers)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.json()}")
-        
-        if response.status_code == 200:
-            print("✅ Unsuspend test PASSED")
-        else:
-            print("❌ Unsuspend test FAILED")
-    except Exception as e:
-        print(f"❌ Unsuspend test ERROR: {e}")
-    
-    # Test 3: Delete user (soft delete)
-    print(f"\n🔧 Testing delete user {test_user.id}...")
-    delete_url = f"{base_url}/api/auth/admin/users/{test_user.id}/"
-    
-    try:
-        response = requests.delete(delete_url, headers=headers)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.json()}")
-        
-        if response.status_code == 200:
-            print("✅ Delete test PASSED")
-        else:
-            print("❌ Delete test FAILED")
-    except Exception as e:
-        print(f"❌ Delete test ERROR: {e}")
-    
-    # Test 4: List suspended users
-    print(f"\n🔧 Testing list suspended users...")
-    suspended_url = f"{base_url}/api/auth/admin/users/suspended/"
-    
-    try:
-        response = requests.get(suspended_url, headers=headers)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.json()}")
-        
-        if response.status_code == 200:
-            print("✅ List suspended users test PASSED")
-        else:
-            print("❌ List suspended users test FAILED")
-    except Exception as e:
-        print(f"❌ List suspended users test ERROR: {e}")
-
-if __name__ == '__main__':
-    test_admin_endpoints()
+print('\nTest completed.')

@@ -1,6 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import TradeViewSet, CapitalInvestmentPlanViewSet, crypto_buy, crypto_sell, crypto_prices, user_crypto_portfolio
+from .views import (
+    TradeViewSet, CapitalInvestmentPlanViewSet, crypto_buy, crypto_sell, 
+    crypto_prices, user_crypto_portfolio, user_all_investments
+)
+from .live_account_views import (
+    live_portfolio, live_invest_capital_plan, live_dashboard_stats, live_balance
+)
 from .admin_crypto_views import (
     admin_get_crypto_prices, admin_update_crypto_price,
     admin_toggle_crypto_active, admin_get_price_history,
@@ -15,6 +21,15 @@ router.register(r'investment-plans', CapitalInvestmentPlanViewSet, basename='inv
 
 urlpatterns = [
     path('', include(router.urls)),
+    
+    # User investment endpoints
+    path('all/', user_all_investments, name='user-all-investments'),
+    path('portfolio/', live_portfolio, name='live-portfolio'),
+    path('dashboard-stats/', live_dashboard_stats, name='live-dashboard-stats'),
+    path('balance/', live_balance, name='live-balance'),
+    
+    # Investment actions
+    path('capital-plan/', live_invest_capital_plan, name='live-invest-capital-plan'),
     
     # Crypto-specific endpoints (users)
     path('crypto/buy/', crypto_buy, name='crypto-buy'),

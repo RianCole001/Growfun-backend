@@ -40,22 +40,27 @@ urlpatterns = [
 ]
 
 # Admin endpoints - separate URL pattern for clarity
+# Note: These are included under 'api/admin/' in main urls.py, so paths here should NOT have 'admin/' prefix
 admin_urlpatterns = [
     # Deposits
-    path('admin/deposits/', admin_views.admin_get_deposits, name='admin-deposits'),
-    path('admin/deposits/<int:deposit_id>/approve/', admin_views.admin_approve_deposit, name='admin-approve-deposit'),
-    path('admin/deposits/<int:deposit_id>/reject/', admin_views.admin_reject_deposit, name='admin-reject-deposit'),
+    path('deposits/', admin_views.admin_get_deposits, name='admin-deposits'),
+    path('deposits/<int:deposit_id>/approve/', admin_views.admin_approve_deposit, name='admin-approve-deposit'),
+    path('deposits/<int:deposit_id>/reject/', admin_views.admin_reject_deposit, name='admin-reject-deposit'),
     
     # Withdrawals
-    path('admin/withdrawals/', admin_views.admin_get_withdrawals, name='admin-withdrawals'),
-    path('admin/withdrawals/<int:withdrawal_id>/approve/', admin_views.admin_approve_withdrawal, name='admin-approve-withdrawal'),
-    path('admin/withdrawals/<int:withdrawal_id>/reject/', admin_views.admin_reject_withdrawal, name='admin-reject-withdrawal'),
+    path('withdrawals/', admin_views.admin_get_withdrawals, name='admin-withdrawals'),
+    path('withdrawals/<int:withdrawal_id>/approve/', admin_views.admin_approve_withdrawal, name='admin-approve-withdrawal'),
+    path('withdrawals/<int:withdrawal_id>/reject/', admin_views.admin_reject_withdrawal, name='admin-reject-withdrawal'),
     
     # Investments
-    path('admin/investments/', admin_views.admin_get_investments, name='admin-investments'),
+    path('investments/', admin_views.admin_get_investments, name='admin-investments'),
+    path('investments/<str:investment_id>/edit/', admin_views.admin_edit_investment, name='admin-edit-investment'),
+    path('investments/<str:investment_id>/delete/', admin_views.admin_delete_investment, name='admin-delete-investment'),
     
-    # Transactions
-    path('admin/transactions/', admin_views.admin_get_transactions, name='admin-transactions'),
+    # Transactions - support both int and UUID IDs
+    path('transactions/', admin_views.admin_get_transactions, name='admin-transactions'),
+    path('transactions/<str:transaction_id>/edit/', admin_views.admin_edit_transaction, name='admin-edit-transaction'),
+    path('transactions/<str:transaction_id>/delete/', admin_views.admin_delete_transaction, name='admin-delete-transaction'),
 ]
 
 urlpatterns += admin_urlpatterns

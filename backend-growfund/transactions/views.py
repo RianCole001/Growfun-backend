@@ -745,24 +745,24 @@ def transaction_summary(request):
     """
     user_transactions = Transaction.objects.filter(user=request.user)
     
-    # Calculate totals
+    # Calculate totals - include admin credits as deposits
     total_deposits = user_transactions.filter(
-        transaction_type='deposit', 
+        transaction_type__in=['deposit', 'admin_credit'], 
         status='completed'
     ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
     
     total_withdrawals = user_transactions.filter(
-        transaction_type='withdrawal', 
+        transaction_type__in=['withdrawal', 'admin_debit'], 
         status='completed'
     ).aggregate(total=models.Sum('amount'))['total'] or Decimal('0')
     
     pending_deposits = user_transactions.filter(
-        transaction_type='deposit', 
+        transaction_type__in=['deposit', 'admin_credit'],
         status__in=['pending', 'processing']
     ).count()
     
     pending_withdrawals = user_transactions.filter(
-        transaction_type='withdrawal', 
+        transaction_type__in=['withdrawal', 'admin_debit'],
         status__in=['pending', 'processing']
     ).count()
     

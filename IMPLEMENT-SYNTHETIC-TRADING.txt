@@ -1,0 +1,320 @@
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  CRITICAL: DISK SPACE FULL - FREE UP SPACE BEFORE PROCEEDING
+
+Current Status:
+- lightweight-charts v5.1.0 is installed ✓
+- TradeNow component is functional ✓
+- Disk space: 0 bytes free ✗
+
+ACTION REQUIRED:
+1. Free up disk space on C: drive (need at least 1GB)
+2. Then implement the files below
+
+===========================================
+FILE 1: wazimu/Growfund-Dashboard/src/utils/SyntheticPriceEngine.js
+===========================================
+
+class SyntheticPriceEngine {
+  constructor(startPrice = 1850.50) {
+    this.price = startPrice;
+    this.history = [];
+    this.maxHistory = 100;
+    this.trend = 0;
+    this.volatility = 0.0003;
+    this.drift = 0;
+    this.regimeSwitchProbability = 0.02;
+    this.minVolatility = 0.0001;
+    this.maxVolatility = 0.0006;
+  }
+
+  switchRegime() {
+    if (Math.random() < this.regimeSwitchProbability) {
+      this.trend = [-1, 0, 1][Math.floor(Math.random() * 3)];
+      this.volatility = this.minVolatility + Math.random() * (this.maxVolatility - this.minVolatility);
+    }
+  }
+
+  generateTick(userBias = 0) {
+    this.switchRegime();
+    const momentum = this.trend * (0.00005 + Math.random() * 0.00015);
+    const noise = this.boxMullerGaussian() * this.volatility;
+    const bias = userBias * 0.00005;
+    const delta = momentum + noise + bias;
+    this.price += delta;
+    if (this.price < 0.01) this.price = 0.01;
+    this.history.push(this.price);
+    if (this.history.length > this.maxHistory) this.history.shift();
+    return parseFloat(this.price.toFixed(5));
+  }
+
+  boxMullerGaussian() {
+    const u1 = Math.random() || 0.0001;
+    const u2 = Math.random();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  }
+
+  getCurrentPrice() { return this.price; }
+  getHistory() { return [...this.history]; }
+  reset(startPrice) {
+    this.price = startPrice;
+    this.history = [];
+    this.trend = 0;
+    this.volatility = 0.0003;
+  }
+}
+
+export default SyntheticPriceEngine;
+
+===========================================
+FILE 2: wazimu/Growfund-Dashboard/src/utils/CandleBuilder.js
+===========================================
+
+class CandleBuilder {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.open = null;
+    this.high = -Infinity;
+    this.low = Infinity;
+    this.close = null;
+  }
+
+  update(price) {
+    if (this.open === null) {
+      this.open = price;
+    }
+    this.high = Math.max(this.high, price);
+    this.low = Math.min(this.low, price);
+    this.close = price;
+  }
+
+  getCandle(timestamp) {
+    const candle = {
+      time: timestamp,
+      open: this.open,
+      high: this.high,
+      low: this.low,
+      close: this.close
+    };
+    this.reset();
+    return candle;
+  }
+
+  hasData() {
+    return this.open !== null;
+  }
+}
+
+export default CandleBuilder;
+
+===========================================
+FILE 3: wazimu/Growfund-Dashboard/src/utils/HouseEdgeCalculator.js
+===========================================
+
+export function calculateUserBias(activeTrades) {
+  if (!activeTrades || activeTrades.length === 0) return 0;
+  
+  const buys = activeTrades.filter(t => t.direction === 'buy').length;
+  const sells = activeTrades.filter(t => t.direction === 'sell').length;
+  
+  if (buys > sells) {
+    return -1;  // Slight downward pressure
+  } else if (sells > buys) {
+    return 1;   // Slight upward pressure
+  }
+  
+  return 0;
+}
+
+export function calculateHouseEdge(tradeAmount, basePayoutPercentage = 85) {
+  // Reduce payout slightly based on amount
+  const amountFactor = Math.min(tradeAmount / 1000, 0.05); // Max 5% reduction
+  const adjustedPayout = basePayoutPercentage * (1 - amountFactor);
+  
+  return {
+    payoutPercentage: Math.max(75, Math.floor(adjustedPayout)),
+    houseEdgePercentage: 100 - Math.max(75, Math.floor(adjustedPayout))
+  };
+}
+
+===========================================
+FILE 4: wazimu/Growfund-Dashboard/src/components/TradingViewChart.js
+===========================================
+
+import React, { useEffect, useRef } from 'react';
+import { createChart } from 'lightweight-charts';
+
+export default function TradingViewChart({ data, currentPrice, onChartReady }) {
+  const chartContainerRef = useRef();
+  const chartRef = useRef();
+  const candleSeriesRef = useRef();
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: 400,
+      layout: {
+        background: { color: '#0f172a' },
+        textColor: '#d1d5db',
+      },
+      grid: {
+        vertLines: { color: '#1f2937' },
+        horzLines: { color: '#1f2937' },
+      },
+      crosshair: {
+        mode: 1,
+      },
+      rightPriceScale: {
+        borderColor: '#374151',
+      },
+      timeScale: {
+        borderColor: '#374151',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+    });
+
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+
+    if (onChartReady) {
+      onChartReady({ chart, candleSeries });
+    }
+
+    const handleResize = () => {
+      chart.applyOptions({
+        width: chartContainerRef.current.clientWidth,
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, [onChartReady]);
+
+  useEffect(() => {
+    if (!candleSeriesRef.current || !data || data.length === 0) return;
+    candleSeriesRef.current.setData(data);
+  }, [data]);
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '400px', backgroundColor: '#0f172a' }}>
+      <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+      
+      <div style={{
+        position: 'absolute',
+        top: '15px',
+        right: '15px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        backgroundColor: 'rgba(31, 41, 55, 0.9)',
+        padding: '6px 12px',
+        borderRadius: '8px',
+        border: '1px solid rgba(34, 197, 94, 0.3)'
+      }}>
+        <div style={{
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          backgroundColor: '#22c55e',
+          boxShadow: '0 0 8px rgba(34, 197, 94, 0.8)',
+          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+        }} />
+        <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: '700' }}>LIVE</span>
+      </div>
+
+      {currentPrice && (
+        <div style={{
+          position: 'absolute',
+          top: '15px',
+          left: '15px',
+          backgroundColor: 'rgba(59, 130, 246, 0.9)',
+          padding: '8px 16px',
+          borderRadius: '8px',
+          border: '1px solid rgba(59, 130, 246, 0.5)'
+        }}>
+          <span style={{ color: '#fff', fontSize: '16px', fontWeight: '700' }}>
+            ${currentPrice.toFixed(2)}
+          </span>
+        </div>
+      )}
+      
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.1); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+===========================================
+INTEGRATION STEPS:
+===========================================
+
+1. FREE UP DISK SPACE FIRST!
+
+2. Create the 4 files above in their respective locations
+
+3. Update TradeNow.js imports (add at top):
+   import TradingViewChart from './TradingViewChart';
+   import SyntheticPriceEngine from '../utils/SyntheticPriceEngine';
+   import CandleBuilder from '../utils/CandleBuilder';
+   import { calculateUserBias } from '../utils/HouseEdgeCalculator';
+
+4. Replace LiveChart component with TradingViewChart in TradeNow.js
+
+5. Initialize synthetic engine in TradeNow.js:
+   const priceEngineRef = useRef(null);
+   const candleBuilderRef = useRef(null);
+   
+   useEffect(() => {
+     priceEngineRef.current = new SyntheticPriceEngine(currentPrice);
+     candleBuilderRef.current = new CandleBuilder();
+   }, [selectedAsset]);
+
+6. Update price generation loop to use synthetic engine:
+   const userBias = calculateUserBias(activeTrades);
+   const newPrice = priceEngineRef.current.generateTick(userBias);
+   candleBuilderRef.current.update(newPrice);
+
+7. Generate candles every 1-5 seconds and update chart
+
+8. Test thoroughly!
+
+===========================================
+EXPECTED RESULTS:
+===========================================
+
+- Smooth, realistic price movements
+- Professional TradingView-style charts
+- Sub-300ms latency
+- Subtle house edge (2-5%)
+- Deriv-quality user experience
+
+===========================================
+CURRENT STATUS: READY TO IMPLEMENT
+===========================================
+
+All dependencies installed ✓
+Implementation plan complete ✓
+Disk space issue blocking ✗
+
+ACTION: Free up disk space, then create the 4 files above.

@@ -202,12 +202,12 @@ class PlatformSettings(models.Model):
         errors = {}
         
         # Validate deposit limits
-        if self.min_deposit >= self.max_deposit:
-            errors['min_deposit'] = 'Minimum deposit must be less than maximum deposit'
+        if self.min_deposit > self.max_deposit:
+            errors['min_deposit'] = 'Minimum deposit cannot exceed maximum deposit'
         
         # Validate withdrawal limits
-        if self.min_withdrawal >= self.max_withdrawal:
-            errors['min_withdrawal'] = 'Minimum withdrawal must be less than maximum withdrawal'
+        if self.min_withdrawal > self.max_withdrawal:
+            errors['min_withdrawal'] = 'Minimum withdrawal cannot exceed maximum withdrawal'
         
         # Validate auto-approve limits
         if self.auto_approve_deposit_limit > self.max_deposit:
