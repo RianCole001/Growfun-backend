@@ -6,16 +6,8 @@ set -o errexit
 echo "📦 Installing dependencies..."
 pip install -r requirements.txt
 
-echo "🔄 Running database migrations..."
-python manage.py migrate --noinput
-
 echo "📁 Collecting static files..."
-python manage.py collectstatic --noinput
-
-echo "⚙️ Setting up platform settings..."
-python manage.py setup_platform_settings || true
-
-echo "💰 Setting up crypto prices..."
-python manage.py setup_crypto_prices || true
+python manage.py collectstatic --noinput --clear
 
 echo "✅ Build completed successfully!"
+echo "ℹ️  Database migrations will run automatically on startup"
