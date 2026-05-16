@@ -34,8 +34,12 @@ def fetch_recent_trc20_transactions(limit=100):
 
 
 def process_usdt_deposits():
+    from django.db import connection
     from .usdt_models import USDTDepositRequest
     from .models import Transaction
+
+    # Close any stale database connections before starting
+    connection.close_if_unusable_or_obsolete()
 
     # Expire old pending deposits
     USDTDepositRequest.objects.filter(
@@ -135,3 +139,6 @@ def process_usdt_deposits():
         except Exception as e:
             logger.error(f'Error processing tx: {e}')
             continue
+    
+    # Close database connection after processing to prevent stale connections
+    connection.close()

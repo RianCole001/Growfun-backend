@@ -103,30 +103,57 @@ class PublicSettingsView(APIView):
     
     def get(self, request):
         """Get public platform settings"""
-        settings = PlatformSettings.get_settings()
-        
-        return Response({
-            'success': True,
-            'data': {
-                'platformName': settings.platform_name,
-                'platformEmail': settings.platform_email,
-                'minDeposit': str(settings.min_deposit),
-                'maxDeposit': str(settings.max_deposit),
-                'minWithdrawal': str(settings.min_withdrawal),
-                'maxWithdrawal': str(settings.max_withdrawal),
-                'depositFee': str(settings.deposit_fee),
-                'withdrawalFee': str(settings.withdrawal_fee),
-                'referralBonus': str(settings.referral_bonus),
-                'minCapitalPlanInvestment': str(settings.min_capital_plan_investment),
-                'minRealEstateInvestment': str(settings.min_real_estate_investment),
-                'minCryptoInvestment': str(settings.min_crypto_investment),
-                # Capital Plan Individual Minimums
-                'capitalBasicMin': str(settings.capital_basic_min),
-                'capitalStandardMin': str(settings.capital_standard_min),
-                'capitalAdvanceMin': str(settings.capital_advance_min),
-                # Real Estate Individual Minimums
-                'realEstateStarterMin': str(settings.real_estate_starter_min),
-                'realEstatePremiumMin': str(settings.real_estate_premium_min),
-                'realEstateLuxuryMin': str(settings.real_estate_luxury_min),
-            }
-        }, status=status.HTTP_200_OK)
+        try:
+            settings = PlatformSettings.get_settings()
+            
+            return Response({
+                'success': True,
+                'data': {
+                    'platformName': settings.platform_name,
+                    'platformEmail': settings.platform_email,
+                    'minDeposit': str(settings.min_deposit),
+                    'maxDeposit': str(settings.max_deposit),
+                    'minWithdrawal': str(settings.min_withdrawal),
+                    'maxWithdrawal': str(settings.max_withdrawal),
+                    'depositFee': str(settings.deposit_fee),
+                    'withdrawalFee': str(settings.withdrawal_fee),
+                    'referralBonus': str(settings.referral_bonus),
+                    'minCapitalPlanInvestment': str(settings.min_capital_plan_investment),
+                    'minRealEstateInvestment': str(settings.min_real_estate_investment),
+                    'minCryptoInvestment': str(settings.min_crypto_investment),
+                    # Capital Plan Individual Minimums
+                    'capitalBasicMin': str(settings.capital_basic_min),
+                    'capitalStandardMin': str(settings.capital_standard_min),
+                    'capitalAdvanceMin': str(settings.capital_advance_min),
+                    # Real Estate Individual Minimums
+                    'realEstateStarterMin': str(settings.real_estate_starter_min),
+                    'realEstatePremiumMin': str(settings.real_estate_premium_min),
+                    'realEstateLuxuryMin': str(settings.real_estate_luxury_min),
+                }
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            # Log the error but return default settings to prevent frontend crashes
+            print(f"Error getting platform settings: {e}")
+            return Response({
+                'success': True,
+                'data': {
+                    'platformName': 'GrowFund',
+                    'platformEmail': 'support@growfund.com',
+                    'minDeposit': '10.00',
+                    'maxDeposit': '100000.00',
+                    'minWithdrawal': '10.00',
+                    'maxWithdrawal': '100000.00',
+                    'depositFee': '0.00',
+                    'withdrawalFee': '0.00',
+                    'referralBonus': '5.00',
+                    'minCapitalPlanInvestment': '30.00',
+                    'minRealEstateInvestment': '30.00',
+                    'minCryptoInvestment': '10.00',
+                    'capitalBasicMin': '30.00',
+                    'capitalStandardMin': '100.00',
+                    'capitalAdvanceMin': '500.00',
+                    'realEstateStarterMin': '30.00',
+                    'realEstatePremiumMin': '100.00',
+                    'realEstateLuxuryMin': '500.00',
+                }
+            }, status=status.HTTP_200_OK)
