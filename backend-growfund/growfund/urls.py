@@ -18,6 +18,26 @@ def health_check(request):
     return Response({'status': 'ok'})
 
 
+@api_view(['GET'])
+@permission_classes([])
+def root_view(request):
+    """Root endpoint - API information"""
+    return Response({
+        'message': 'GrowFund API',
+        'version': '1.0',
+        'status': 'running',
+        'endpoints': {
+            'health': '/api/health/',
+            'admin': '/admin/',
+            'auth': '/api/auth/',
+            'investments': '/api/investments/',
+            'transactions': '/api/transactions/',
+            'demo': '/api/demo/',
+            'binary_trading': '/api/binary/',
+        }
+    })
+
+
 
 def run_migrations(request):
     """Admin-only: run pending migrations on the live server."""
@@ -80,6 +100,7 @@ def db_check(request):
 
 
 urlpatterns = [
+    path('', root_view, name='root'),  # Root endpoint
     path('admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
     path('api/investments/', include('investments.urls')),

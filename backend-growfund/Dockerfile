@@ -23,11 +23,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput || true
+# Collect static files (no database access needed here)
+RUN python manage.py collectstatic --noinput --clear || true
 
-# Expose port
+# Copy and make start script executable
+COPY start.sh .
+RUN chmod +x start.sh
+
+# Expose port (Render will override with $PORT)
 EXPOSE 8000
 
-# Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "growfund.wsgi:application"]
+# Run startup script (migrations + gunicorn)
+CMD ["./start.sh"]

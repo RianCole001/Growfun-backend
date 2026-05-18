@@ -12,4 +12,5 @@ echo "💰 Setting up crypto prices..."
 python manage.py setup_crypto_prices || true
 
 echo "🚀 Starting Gunicorn server..."
-gunicorn growfund.wsgi:application --bind 0.0.0.0:$PORT --workers 4 --timeout 120
+# Use PORT environment variable from Render, default to 8000
+gunicorn growfund.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 4 --timeout 120
